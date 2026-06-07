@@ -1,20 +1,92 @@
+import { cleanCache, doctorCache, getCacheStats, rebuildCache, syncCache } from "./cache.js";
+import { detectFzfVersion, runFzf } from "./fzf.js";
+import { parseRecordKey } from "./records.js";
+import { runSelectedAction, type SelectedAction } from "./actions.js";
+import { candidateLines, findRecordByKey, previewRecord, rgCandidateLines, type SearchOptions } from "./search.js";
+
 const HELP = `pi-fzf
 
 Search previous Pi sessions with rg and fzf.
 
 Usage:
-  pi-fzf --help
-  pi-fzf help
-
-Commands will be implemented in later phases.
+  pi-fzf [query...]
+  pi-fzf search [query...] [--json|--print-session-id|--print-session-path|--print-snippet] [--no-fzf]
+  pi-fzf index [--rebuild]
+  pi-fzf clean | doctor | stats
+  pi-fzf candidates --query <query>
+  pi-fzf preview --key <key>
+  pi-fzf copy --key <key>
 `;
 
 export async function main(args: string[] = process.argv.slice(2)): Promise<void> {
-  if (args.length === 0 || args.includes("--help") || args.includes("-h") || args[0] === "help") {
-    console.log(HELP.trimEnd());
-    return;
-  }
+  if (args.includes("--help") || args.includes("-h") || args[0] === "help") { console.log(HELP.trimEnd()); return; }
+  const cmd = command(args);
+  const rest = cmd === "default" ? args : args.slice(1);
+  const opts = parseOptions(rest);
 
-  console.error("pi-fzf: session search commands are not implemented yet");
-  process.exitCode = 1;
+  if (cmd === "index") { console.log(JSON.stringify(opts.rebuild ? await rebuildCache() : await syncCache())); return; }
+  if (cmd === "clean") { console.log(JSON.stringify(await cleanCache())); return; }
+  if (cmd === "doctor") { console.log(JSON.stringify(await doctorCache(), null, 2)); return; }
+  if (cmd === "stats") { console.log(JSON.stringify(await getCacheStats(), null, 2)); return; }
+  if (cmd === "candidates") { console.log((await rgCandidateLines(opts)).join("\n")); return; }
+  if (cmd === "preview") { await printPreview(required(opts.key, "--key")); return; }
+  if (cmd === "copy") { await copyKey(required(opts.key, "--key")); return; }
+
+  await syncCache();
+  if (opts.noFzf) { await printSearch(opts); return; }
+  const lines = await candidateLines(opts);
+  const fzfOptions: Parameters<typeof runFzf>[0] = { candidates: lines };
+  if (opts.query !== undefined) fzfOptions.query = opts.query;
+  const version = await detectFzfVersion();
+  if (version !== undefined) fzfOptions.version = version;
+  const selected = await runFzf(fzfOptions);
+  if (!selected) return;
+  const record = await findRecordByKey(parseRecordKey(selected));
+  if (!record) { process.exitCode = 1; return; }
+  await runSelectedAction(record, actionFromOptions(opts));
 }
+
+async function printSearch(opts: CliOptions) {
+  const lines = await candidateLines(opts);
+  if (!opts.json && !opts.printSessionId && !opts.printSessionPath && !opts.printSnippet) { console.log(lines.join("\n")); return; }
+  for (const line of lines) {
+    const r = await findRecordByKey(parseRecordKey(line));
+    if (!r) continue;
+    if (opts.json) console.log(JSON.stringify(r));
+    else if (opts.printSessionId) console.log(r.sessionId);
+    else if (opts.printSessionPath) console.log(r.sessionPath);
+    else console.log(r.text);
+  }
+}
+
+async function printPreview(key: string) {
+  const p = await previewRecord(key);
+  if (!p) { process.exitCode = 1; return; }
+  console.log(p.metadata.join("\n"));
+  console.log(`text:\n${p.record.text}`);
+  if (p.neighbors.length) console.log(`neighbors:\n${p.neighbors.map((n) => `[${n.role}] ${n.text}`).join("\n")}`);
+}
+async function copyKey(key: string) { const r = await findRecordByKey(key); if (!r) { process.exitCode = 1; return; } await runSelectedAction(r, "copy"); }
+
+type Command = "default" | "search" | "index" | "clean" | "doctor" | "stats" | "candidates" | "preview" | "copy";
+interface CliOptions extends SearchOptions { json?: boolean; printSessionId?: boolean; printSessionPath?: boolean; printSnippet?: boolean; noFzf?: boolean; rebuild?: boolean; key?: string }
+function command(args: string[]): Command { return ["search","index","clean","doctor","stats","candidates","preview","copy"].includes(args[0] ?? "") ? args[0] as Command : "default"; }
+function parseOptions(args: string[]): CliOptions {
+  const o: CliOptions = {}; const terms: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === "--json") o.json = true; else if (a === "--print-session-id") o.printSessionId = true;
+    else if (a === "--print-session-path") o.printSessionPath = true; else if (a === "--print-snippet") o.printSnippet = true;
+    else if (a === "--no-fzf") o.noFzf = true; else if (a === "--rebuild") o.rebuild = true;
+    else if (a === "--query") o.query = args[++i] ?? ""; else if (a === "--key") { const v = args[++i]; if (v !== undefined) o.key = v; }
+    else if (a === "--role") { const v = args[++i]; if (v !== undefined) o.role = v as any; } else if (a === "--project") { const v = args[++i]; if (v !== undefined) o.project = v; }
+    else if (a === "--cwd") { const v = args[++i]; if (v !== undefined) o.cwd = v; } else if (a === "--since") { const v = args[++i]; if (v !== undefined) o.since = v; } else if (a === "--before") { const v = args[++i]; if (v !== undefined) o.before = v; }
+    else if (a === "--named-only") o.namedOnly = true; else if (a === "--limit") o.limit = Number(args[++i]);
+    else if (a === "--or") o.tokenMode = "or"; else if (a === "--regex") o.matchMode = "regex"; else if (a === "--fixed") o.matchMode = "fixed";
+    else terms.push(a);
+  }
+  if (o.query === undefined && terms.length) o.query = terms.join(" ");
+  return o;
+}
+function actionFromOptions(o: CliOptions): SelectedAction { if (o.json) return "json"; if (o.printSessionId) return "print-session-id"; if (o.printSessionPath) return "print-session-path"; if (o.printSnippet) return "print-snippet"; return (process.env.PI_FZF_ACTION as SelectedAction | undefined) ?? "menu"; }
+function required(v: string | undefined, name: string): string { if (!v) throw new Error(`${name} is required`); return v; }
