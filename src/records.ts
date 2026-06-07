@@ -61,8 +61,10 @@ export function recordsFromParsedSession(parsed: ParsedSession, options: Records
       if (extracted.timestamp !== undefined) base.timestamp = extracted.timestamp;
       if (cwd !== undefined) base.cwd = cwd;
       if (sessionName !== undefined) base.sessionName = sessionName;
-      const searchText = sanitizeField([cwd, sessionName, extracted.role, chunk].filter(Boolean).join(" ")).slice(0, chunkSize);
-      const display = sanitizeField([shortPath(parsed.sourcePath), extracted.role, sessionName, chunk].filter(Boolean).join(" — "));
+      const label = sessionLabel({ cwd, sessionName, sessionId: parsed.sessionId, sourcePath: parsed.sourcePath });
+      const date = dateLabel(extracted.timestamp);
+      const searchText = sanitizeField([cwd, sessionName, parsed.sessionId, extracted.role, chunk].filter(Boolean).join(" ")).slice(0, chunkSize);
+      const display = sanitizeField([label, date, extracted.role, chunk].filter(Boolean).join(" — "));
       records.push({ ...base, display, searchText });
     });
   }
@@ -93,6 +95,23 @@ function chunkText(text: string, chunkSize: number): string[] {
     chunks.push(text.slice(offset, offset + chunkSize).trim());
   }
   return chunks.filter(Boolean);
+}
+
+function sessionLabel(input: { cwd: string | undefined; sessionName: string | undefined; sessionId: string; sourcePath: string }): string {
+  return input.sessionName ?? projectFromCwd(input.cwd) ?? shortId(input.sessionId) ?? shortPath(input.sourcePath);
+}
+
+function projectFromCwd(cwd: string | undefined): string | undefined {
+  if (!cwd) return undefined;
+  return cwd.split(/[\\/]/).filter(Boolean).pop();
+}
+
+function dateLabel(timestamp: string | undefined): string | undefined {
+  return timestamp?.slice(0, 10);
+}
+
+function shortId(sessionId: string): string | undefined {
+  return sessionId ? sessionId.slice(0, 8) : undefined;
 }
 
 function shortPath(path: string): string {

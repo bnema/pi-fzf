@@ -72,7 +72,7 @@ export async function previewRecord(key: string, contextLines = 2, options: Sear
   const idx = sorted.findIndex((r) => recordKey(r) === recordKey(found));
   const neighbors = idx < 0 ? [] : sorted.slice(Math.max(0, idx - contextLines), idx).concat(sorted.slice(idx + 1, idx + 1 + contextLines));
   const metadata = [
-    `project: ${found.sessionName ?? ""}`,
+    `project: ${found.sessionName ?? projectFromCwd(found.cwd) ?? ""}`,
     `cwd: ${found.cwd ?? ""}`,
     `session id: ${found.sessionId}`,
     `session path: ${found.sessionPath}`,
@@ -253,5 +253,6 @@ function matchesQuery(r: CandidateRecord, query: string, o: SearchOptions): bool
 function contains(hay: string, needle: string, caseSensitive: boolean): boolean {
   return caseSensitive ? hay.includes(needle) : hay.toLowerCase().includes(needle.toLowerCase());
 }
+function projectFromCwd(cwd: string | undefined): string | undefined { return cwd?.split(/[\\/]/).filter(Boolean).pop(); }
 function tokenize(q: string): string[] { return q.split(/\s+/).filter(Boolean); }
 function smartCaseFlags(q: string): string { return /[A-Z]/.test(q) ? "" : "i"; }

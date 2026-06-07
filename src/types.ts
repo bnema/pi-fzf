@@ -1,5 +1,5 @@
 export const CACHE_VERSION = 1;
-export const EXTRACTOR_VERSION = 2;
+export const EXTRACTOR_VERSION = 3;
 
 export type SearchRole = "user" | "assistant" | "compaction" | "branch_summary" | "session";
 
