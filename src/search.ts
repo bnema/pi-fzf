@@ -5,7 +5,7 @@ import { createInterface } from "node:readline/promises";
 import { spawn } from "node:child_process";
 
 import { resolveCacheRoot, type PathResolutionOptions } from "./paths.js";
-import { parseRecordKey, recordKey, toCandidateLine, type CandidateRecord } from "./records.js";
+import { parseRecordKey, recordKey, type CandidateRecord } from "./records.js";
 import type { SearchRole } from "./types.js";
 
 export type TokenMode = "and" | "or";
@@ -45,7 +45,7 @@ export async function searchRecords(options: SearchOptions = {}): Promise<Candid
 }
 
 export async function candidateLines(options: SearchOptions = {}): Promise<string[]> {
-  return (await searchRecords(options)).map(toCandidateLine);
+  return toSessionCandidateLines(await searchRecords(options), options.limit ?? DEFAULT_LIMIT);
 }
 
 export async function findRecordByKey(key: string, options: SearchOptions = {}): Promise<CandidateRecord | undefined> {
@@ -56,6 +56,7 @@ export async function findRecordByKey(key: string, options: SearchOptions = {}):
     for (const record of records) if (recordKey(record) === parsed) return record;
     return undefined;
   }
+  if (isSourceKey(parsed)) return mostRecentRecord(await readSourceRecords(parsed, options));
   for await (const record of readAllRecords(options)) if (recordKey(record) === parsed) return record;
   return undefined;
 }
@@ -63,8 +64,9 @@ export async function findRecordByKey(key: string, options: SearchOptions = {}):
 export async function previewRecord(key: string, contextLines = 2, options: SearchOptions = {}): Promise<Preview | undefined> {
   const parsed = parseRecordKey(key);
   const keyParts = parseKeyParts(parsed);
-  const same = keyParts ? await readSourceRecords(keyParts.sourceKey, options) : [];
-  const found = same.find((r) => recordKey(r) === parsed) ?? await findRecordByKey(parsed, options);
+  const sourceKey = keyParts?.sourceKey ?? (isSourceKey(parsed) ? parsed : undefined);
+  const same = sourceKey ? await readSourceRecords(sourceKey, options) : [];
+  const found = (keyParts ? same.find((r) => recordKey(r) === parsed) : mostRecentRecord(same)) ?? await findRecordByKey(parsed, options);
   if (!found) return undefined;
   const sourceRecords = same.length ? same : await readSourceRecords(found.sourceKey, options);
   const sorted = sourceRecords.sort((a, b) => a.sequence - b.sequence || a.chunkIndex - b.chunkIndex);
@@ -98,7 +100,7 @@ export async function rgCandidateLines(options: SearchOptions = {}): Promise<str
       out.push(record);
     }
   }
-  return sortByRecency(out).slice(0, options.limit ?? DEFAULT_LIMIT).map(toCandidateLine);
+  return toSessionCandidateLines(out, options.limit ?? DEFAULT_LIMIT);
 }
 
 function rgArgsForQuery(query: string, options: SearchOptions, recordsDir: string): string[] {
@@ -247,8 +249,46 @@ function matchesQuery(r: CandidateRecord, query: string, o: SearchOptions): bool
   return (o.tokenMode ?? "and") === "or" ? checks.some(Boolean) : checks.every(Boolean);
 }
 
+function toSessionCandidateLines(records: CandidateRecord[], limit: number): string[] {
+  const sessions = new Map<string, CandidateRecord[]>();
+  for (const record of records) {
+    const group = sessions.get(record.sourceKey) ?? [];
+    group.push(record);
+    sessions.set(record.sourceKey, group);
+  }
+
+  return [...sessions.values()]
+    .map(toSessionCandidateLine)
+    .sort((a, b) => compareRecordRecency(b.bestRecord, a.bestRecord))
+    .slice(0, limit)
+    .map((candidate) => `${candidate.sourceKey}\t${candidate.display}\t${candidate.searchText}`);
+}
+
+function toSessionCandidateLine(records: CandidateRecord[]): { sourceKey: string; display: string; searchText: string; bestRecord: CandidateRecord } {
+  const sorted = sortByRecency(records);
+  const bestRecord = sorted[0]!;
+  const label = bestRecord.sessionName ?? projectFromCwd(bestRecord.cwd) ?? bestRecord.sessionId.slice(0, 8);
+  const date = bestRecord.timestamp?.slice(0, 10);
+  const matchLabel = records.length === 1 ? "1 match" : `${records.length} matches`;
+  const snippet = bestRecord.text;
+  return {
+    sourceKey: bestRecord.sourceKey,
+    display: [label, date, matchLabel, snippet].filter(Boolean).join(" — "),
+    searchText: [bestRecord.cwd, bestRecord.sessionName, bestRecord.sessionId, ...records.slice(0, 20).map((record) => record.text)].filter(Boolean).join(" "),
+    bestRecord,
+  };
+}
+
 function sortByRecency(records: CandidateRecord[]): CandidateRecord[] {
   return [...records].sort((a, b) => compareRecordRecency(b, a));
+}
+
+function mostRecentRecord(records: CandidateRecord[]): CandidateRecord | undefined {
+  return sortByRecency(records)[0];
+}
+
+function isSourceKey(key: string): boolean {
+  return /^[0-9a-f]{16,24}$/.test(key);
 }
 
 function compareRecordRecency(a: CandidateRecord, b: CandidateRecord): number {

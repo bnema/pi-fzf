@@ -79,13 +79,13 @@ describe("search", () => {
     expect(rgKeys).toEqual(scannedKeys);
   });
 
-  it("handles large rg shards with low limits", async () => {
+  it("groups many rg matches from one shard into one session candidate", async () => {
     const { cacheRoot } = await fixture();
     const recordsDir = join(cacheRoot, "records");
     const many = Array.from({ length: 200 }, (_, i) => ({
       cacheVersion: 1,
       extractorVersion: 1,
-      sourceKey: "manual-large",
+      sourceKey: "aaaaaaaaaaaaaaaa",
       sessionId: "large",
       sessionPath: "/tmp/large.jsonl",
       role: "user",
@@ -95,11 +95,12 @@ describe("search", () => {
       display: `large — user — needle ${i}`,
       searchText: `needle ${i}`,
     }));
-    await writeFile(join(recordsDir, "manual-large.jsonl"), many.map((record) => JSON.stringify(record)).join("\n") + "\n");
+    await writeFile(join(recordsDir, "aaaaaaaaaaaaaaaa.jsonl"), many.map((record) => JSON.stringify(record)).join("\n") + "\n");
 
     const lines = await rgCandidateLines({ cacheRoot, query: "needle", limit: 3 });
-    expect(lines).toHaveLength(3);
-    expect(lines.every((line) => line.includes("needle"))).toBe(true);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.split("\t")[0]).toBe("aaaaaaaaaaaaaaaa");
+    expect(lines[0]).toContain("200 matches");
   });
 
   it("builds preview from the selected record source shard", async () => {
