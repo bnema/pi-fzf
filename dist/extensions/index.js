@@ -3,8 +3,8 @@ import { doctorCache, getCacheStats, syncCache } from "../src/cache.js";
 import { detectFzfVersion, runFzf } from "../src/fzf.js";
 import { parseRecordKey } from "../src/records.js";
 import { findRecordByKey, searchRecords } from "../src/search.js";
-const NATIVE_LIMIT = 150;
-const HARD_LIMIT = NATIVE_LIMIT + 1;
+const SESSION_LIMIT = 10_000;
+const VISIBLE_ROWS = 14;
 export default function piFzfExtension(pi) {
     pi.registerCommand("fzf", {
         description: "Search previous Pi sessions.",
@@ -22,13 +22,11 @@ export default function piFzfExtension(pi) {
 }
 async function runSearchCommand(pi, ctx, parsed) {
     await syncCache();
-    const searchOptions = { limit: HARD_LIMIT };
-    if (parsed.query !== undefined)
-        searchOptions.query = parsed.query;
+    const searchOptions = { limit: SESSION_LIMIT };
     if (parsed.external) {
         const safe = ctx.mode === "print" && process.stdin.isTTY && process.stdout.isTTY;
         if (safe) {
-            const selected = await runExternal(searchOptions);
+            const selected = await runExternal(parsed.query === undefined ? searchOptions : { ...searchOptions, query: parsed.query });
             if (!selected)
                 return;
             return actOnRecord(pi, ctx, selected);
@@ -36,30 +34,22 @@ async function runSearchCommand(pi, ctx, parsed) {
         ctx.ui.notify("/fzf --external cannot safely take over the terminal from this Pi UI; using the native selector instead.", "warning");
     }
     const records = await searchRecords(searchOptions);
-    const truncated = records.length > NATIVE_LIMIT;
-    const visible = records.slice(0, NATIVE_LIMIT);
-    if (visible.length === 0) {
-        ctx.ui.notify("No pi-fzf results found.", "info");
+    if (records.length === 0) {
+        ctx.ui.notify("No pi-fzf sessions indexed yet. Run /fzf index first if needed.", "info");
         return;
     }
-    if (truncated)
-        ctx.ui.notify(`Showing first ${NATIVE_LIMIT} results. Refine your query to see more.`, "warning");
-    if (!ctx.hasUI) {
-        showRecord(ctx, visible[0]);
+    const initialQuery = parsed.query ?? "";
+    if (!ctx.hasUI || ctx.mode !== "tui") {
+        const first = sessionResults(records, initialQuery)[0];
+        if (first)
+            showRecord(ctx, first);
+        else
+            ctx.ui.notify(`No pi-fzf results for ${JSON.stringify(initialQuery)}.`, "info");
         return;
     }
-    const labels = new Map();
-    const choices = visible.map((record, index) => {
-        const label = `${index + 1}. ${resultLabel(record)}`;
-        labels.set(label, record);
-        return label;
-    });
-    const choice = await ctx.ui.select("Search Pi sessions", choices);
-    if (!choice)
-        return;
-    const record = labels.get(choice);
-    if (record)
-        await actOnRecord(pi, ctx, record);
+    const selected = await runNativeSearchPicker(ctx, records, initialQuery);
+    if (selected)
+        await actOnRecord(pi, ctx, selected);
 }
 async function runExternal(options) {
     const lines = (await searchRecords(options)).map((record) => `${record.sourceKey}:${record.sequence}:${record.chunkIndex}\t${resultLabel(record)}`);
@@ -73,6 +63,116 @@ async function runExternal(options) {
     if (!selected)
         return undefined;
     return findRecordByKey(parseRecordKey(selected));
+}
+async function runNativeSearchPicker(ctx, records, initialQuery) {
+    return ctx.ui.custom((tui, theme, keybindings, done) => {
+        return new PiFzfPicker(records, initialQuery, keybindings, () => tui.requestRender(), done, theme);
+    }, {
+        overlay: true,
+        overlayOptions: { width: "90%", maxHeight: 22, anchor: "center" },
+    });
+}
+export class PiFzfPicker {
+    records;
+    keybindings;
+    requestRender;
+    done;
+    theme;
+    query;
+    selected = 0;
+    offset = 0;
+    cachedQuery;
+    cachedResults = [];
+    constructor(records, initialQuery, keybindings, requestRender, done, theme) {
+        this.records = records;
+        this.keybindings = keybindings;
+        this.requestRender = requestRender;
+        this.done = done;
+        this.theme = theme;
+        this.query = initialQuery;
+    }
+    handleInput(data) {
+        const beforeQuery = this.query;
+        if (this.keybindings.matches(data, "tui.select.up") || data === "k")
+            this.move(-1);
+        else if (this.keybindings.matches(data, "tui.select.down") || data === "j")
+            this.move(1);
+        else if (this.keybindings.matches(data, "tui.select.pageUp"))
+            this.move(-VISIBLE_ROWS);
+        else if (this.keybindings.matches(data, "tui.select.pageDown"))
+            this.move(VISIBLE_ROWS);
+        else if (this.keybindings.matches(data, "tui.select.confirm") || data === "\n")
+            this.done(this.results()[this.selected]);
+        else if (this.keybindings.matches(data, "tui.select.cancel"))
+            this.done(undefined);
+        else if (data === "\x7f" || data === "\b")
+            this.query = this.query.slice(0, -1);
+        else if (data === "\x15")
+            this.query = "";
+        else if (isPrintable(data))
+            this.query += data;
+        if (this.query !== beforeQuery) {
+            this.selected = 0;
+            this.offset = 0;
+            this.cachedQuery = undefined;
+        }
+        this.invalidate();
+        this.requestRender();
+    }
+    render(width) {
+        const results = this.results();
+        this.clampSelection(results.length);
+        this.ensureVisible();
+        const body = results.slice(this.offset, this.offset + VISIBLE_ROWS);
+        const lines = [
+            this.line(width, this.accent("pi-fzf session search")),
+            this.line(width, `query: ${this.query}${this.dim("▌")}`),
+            this.line(width, `${results.length} session${results.length === 1 ? "" : "s"} · type to filter · ↑/↓ move · PgUp/PgDn page · Enter select · Esc cancel · Ctrl-U clear`),
+            this.line(width, ""),
+        ];
+        if (body.length === 0)
+            lines.push(this.line(width, this.dim("No matching sessions.")));
+        for (let i = 0; i < body.length; i++) {
+            const absolute = this.offset + i;
+            const record = body[i];
+            const prefix = absolute === this.selected ? "› " : "  ";
+            const text = `${prefix}${resultLabel(record)}`;
+            lines.push(this.line(width, absolute === this.selected ? this.selectedStyle(text) : text));
+        }
+        return lines;
+    }
+    invalidate() { }
+    results() {
+        if (this.cachedQuery === this.query)
+            return this.cachedResults;
+        this.cachedQuery = this.query;
+        this.cachedResults = sessionResults(this.records, this.query);
+        return this.cachedResults;
+    }
+    move(delta) {
+        const count = this.results().length;
+        if (count === 0)
+            return;
+        this.selected = Math.max(0, Math.min(count - 1, this.selected + delta));
+    }
+    clampSelection(count) {
+        if (count === 0) {
+            this.selected = 0;
+            this.offset = 0;
+            return;
+        }
+        this.selected = Math.max(0, Math.min(count - 1, this.selected));
+    }
+    ensureVisible() {
+        if (this.selected < this.offset)
+            this.offset = this.selected;
+        if (this.selected >= this.offset + VISIBLE_ROWS)
+            this.offset = this.selected - VISIBLE_ROWS + 1;
+    }
+    line(width, text) { return truncate(text, Math.max(10, width)); }
+    dim(text) { return this.theme.fg?.("muted", text) ?? text; }
+    accent(text) { return this.theme.fg?.("accent", text) ?? text; }
+    selectedStyle(text) { return this.theme.bg?.("selectedBg", text) ?? this.accent(text); }
 }
 async function actOnRecord(pi, ctx, record) {
     const reference = sessionReference(record);
@@ -103,7 +203,22 @@ async function actOnRecord(pi, ctx, record) {
     await copyText(reference);
     ctx.ui.notify(`Session reference copied or printed: ${record.sessionId}`, "info");
 }
-function parseFzfArgs(args) {
+export function sessionResults(records, query) {
+    const groups = new Map();
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    for (const record of records) {
+        if (tokens.length > 0) {
+            const haystack = `${record.sessionName ?? ""} ${record.cwd ?? ""} ${record.sessionId} ${record.display} ${record.searchText} ${record.text}`.toLowerCase();
+            if (!tokens.every((token) => haystack.includes(token)))
+                continue;
+        }
+        const group = groups.get(record.sourceKey) ?? [];
+        group.push(record);
+        groups.set(record.sourceKey, group);
+    }
+    return [...groups.values()].map(bestRecord).sort(compareRecordRecencyDesc);
+}
+export function parseFzfArgs(args) {
     const parts = args.trim().split(/\s+/).filter(Boolean);
     const first = parts[0];
     if (first === "index" || first === "stats" || first === "doctor")
@@ -134,5 +249,29 @@ function formatDate(timestamp) {
 }
 function oneLine(text) {
     return text.replace(/\s+/g, " ").trim().slice(0, 140);
+}
+function bestRecord(records) {
+    return [...records].sort(compareRecordRecencyDesc)[0];
+}
+function compareRecordRecencyDesc(a, b) {
+    const timestampDelta = timestampMs(b.timestamp) - timestampMs(a.timestamp);
+    if (timestampDelta !== 0)
+        return timestampDelta;
+    return b.sequence - a.sequence || b.chunkIndex - a.chunkIndex;
+}
+function timestampMs(timestamp) {
+    if (!timestamp)
+        return Number.NEGATIVE_INFINITY;
+    const parsed = Date.parse(timestamp);
+    return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+}
+function isPrintable(data) {
+    return data.length === 1 && data >= " " && data !== "\x7f";
+}
+function truncate(text, width) {
+    const plain = text.replace(/\u001b\[[0-9;]*m/g, "");
+    if (plain.length <= width)
+        return text;
+    return `${plain.slice(0, Math.max(0, width - 1))}…`;
 }
 //# sourceMappingURL=index.js.map
