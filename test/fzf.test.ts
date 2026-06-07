@@ -50,6 +50,7 @@ describe("buildFzfArgs", () => {
     expect(args).toContain("--delimiter=\t");
     expect(args).toContain("--with-nth=2");
     expect(args).not.toContain("--nth=2,3");
+    expect(args).toContain("--exact");
     expect(args).toContain("--ignore-case");
     expect(args).toContain("--accept-nth=1");
     expect(args).toContain("--id-nth=1");

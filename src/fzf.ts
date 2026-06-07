@@ -83,6 +83,7 @@ export function buildFzfArgs(options: FzfRunOptions): string[] {
   const args = [
     "--delimiter=\t",
     "--with-nth=2",
+    "--exact",
     "--ignore-case",
     `--preview=${piFzfCommand} preview --key {1}`,
   ];
