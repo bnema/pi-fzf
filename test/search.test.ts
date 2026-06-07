@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { syncCache } from "../src/cache.js";
-import { candidateLines, findRecordByKey, previewRecord, searchRecords } from "../src/search.js";
+import { candidateLines, findRecordByKey, previewRecord, rgCandidateLines, searchRecords } from "../src/search.js";
 import { recordKey } from "../src/records.js";
 
 const temps: string[] = [];
@@ -47,5 +47,13 @@ describe("search", () => {
     const preview = await previewRecord(recordKey(record), 1, { cacheRoot });
     expect(preview?.metadata.join("\n")).toContain("session id: s1");
     expect(preview?.neighbors[0]?.text).toContain("alpha");
+  });
+
+  it("uses rg candidate prefilter for non-empty searches while preserving filters", async () => {
+    const { cacheRoot } = await fixture();
+    const lines = await rgCandidateLines({ cacheRoot, query: "alpha beta", role: "user" });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("alpha beta");
+    expect(await rgCandidateLines({ cacheRoot, query: "alpha beta", role: "assistant" })).toHaveLength(0);
   });
 });

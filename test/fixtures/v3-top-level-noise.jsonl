@@ -1,0 +1,3 @@
+{"sessionId":"sess-noise","role":"user","type":"bashExecution","content":"top-level bashExecution should be skipped"}
+{"sessionId":"sess-noise","role":"assistant","type":"toolCall","content":"top-level toolCall should be skipped"}
+{"sessionId":"sess-noise","role":"assistant","type":"text","content":"Human-visible text"}

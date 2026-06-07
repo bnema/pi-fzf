@@ -54,6 +54,8 @@ export async function parseSessionFile(sessionPath: string): Promise<ParsedSessi
       continue;
     }
 
+    if (isNoisyTopLevelEntry(entry)) continue;
+
     const role = stringValue(entry.role);
     if (!role || !TEXT_ROLES.has(role) || NOISY_ROLES.has(role)) continue;
 
@@ -86,6 +88,11 @@ function summaryText(entry: any): { role: "compaction" | "branch_summary"; text:
   const branch = stringValue(entry.branch_summary?.summary) ?? stringValue(entry.branchSummary?.summary) ?? (type === "branch_summary" ? stringValue(entry.summary) : undefined);
   if (branch) return { role: "branch_summary", text: branch };
   return undefined;
+}
+
+function isNoisyTopLevelEntry(entry: any): boolean {
+  const type = stringValue(entry.type);
+  return type !== undefined && NOISY_TYPES.has(type);
 }
 
 function extractTextBlocks(content: unknown): string[] {

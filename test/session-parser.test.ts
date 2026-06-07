@@ -37,6 +37,11 @@ describe("parseSessionFile", () => {
     expect(text).not.toContain("AAAAABBBBBCCCCCDDDDDEEEEEFFFFFGGGGG");
   });
 
+  it("skips noisy top-level typed entries even with text roles", async () => {
+    const parsed = await parseSessionFile(fixture("v3-top-level-noise.jsonl"));
+    expect(parsed.records.map((r) => r.text)).toEqual(["Human-visible text"]);
+  });
+
   it("extracts compaction and branch summaries", async () => {
     const parsed = await parseSessionFile(fixture("v3-compaction-branch.jsonl"));
 

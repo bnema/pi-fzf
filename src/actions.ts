@@ -12,8 +12,8 @@ export async function runSelectedAction(record: CandidateRecord, action: Selecte
     case "print-snippet": console.log(record.text); return true;
     case "json": console.log(JSON.stringify(record)); return true;
     case "copy": return copyText(options.clipboardText ?? record.text);
-    case "resume": return outputOrExec(buildResumeCommand(record), options.exec);
-    case "fork": return outputOrExec(buildForkCommand(record), options.exec);
+    case "resume": return outputOrExec(buildResumeCommand(record), buildResumeArgv(record), options.exec);
+    case "fork": return outputOrExec(buildForkCommand(record), buildForkArgv(record), options.exec);
     case "menu": console.log(record.text); return true;
   }
 }
@@ -26,6 +26,14 @@ export function buildForkCommand(record: CandidateRecord): string {
   return `pi --fork ${shellQuote(record.sessionId)}`;
 }
 
+export function buildResumeArgv(record: CandidateRecord): [string, string, string] {
+  return ["pi", "--resume", record.sessionId];
+}
+
+export function buildForkArgv(record: CandidateRecord): [string, string, string] {
+  return ["pi", "--fork", record.sessionId];
+}
+
 export async function copyText(text: string): Promise<boolean> {
   for (const cmd of ["wl-copy", "xclip", "xsel", "pbcopy"]) {
     const args = cmd === "xclip" ? ["-selection", "clipboard"] : cmd === "xsel" ? ["--clipboard", "--input"] : [];
@@ -35,10 +43,9 @@ export async function copyText(text: string): Promise<boolean> {
   return false;
 }
 
-async function outputOrExec(command: string, exec?: boolean): Promise<boolean> {
+async function outputOrExec(command: string, argv: [string, ...string[]], exec?: boolean): Promise<boolean> {
   if (!exec) { console.log(command); return true; }
-  const [cmd, ...args] = command.split(" ");
-  if (!cmd) return false;
+  const [cmd, ...args] = argv;
   return new Promise((resolve) => {
     const child = spawn(cmd, args, { stdio: "inherit", shell: false });
     child.on("error", () => resolve(false));

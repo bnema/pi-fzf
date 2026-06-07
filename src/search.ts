@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { spawn } from "node:child_process";
@@ -81,17 +81,52 @@ export async function rgCandidateLines(options: SearchOptions = {}): Promise<str
   const args = ["--json", "--smart-case", "--glob=*.jsonl"];
   if (options.matchMode !== "regex") args.push("--fixed-strings");
   args.push(token, join(cacheRoot, "records"));
-  await spawnCollect("rg", args);
-  // rg is used as a safe broad prefilter hook; canonical filtering stays in Node for JSONL correctness.
-  return candidateLines(options);
+  const matches = await rgMatchingLines("rg", args);
+  if (!matches) return candidateLines(options);
+  const out: CandidateRecord[] = [];
+  const seen = new Set<string>();
+  for (const match of matches) {
+    if (out.length >= (options.limit ?? DEFAULT_LIMIT)) break;
+    const record = await readRecordAtLine(match.path, match.lineNumber);
+    if (!record) continue;
+    const key = recordKey(record);
+    if (seen.has(key) || !passesFilters(record, options) || !matchesQuery(record, query, options)) continue;
+    seen.add(key);
+    out.push(record);
+  }
+  return out.map(toCandidateLine);
 }
 
-async function spawnCollect(command: string, args: string[]): Promise<void> {
-  await new Promise<void>((resolve) => {
-    const child = spawn(command, args, { shell: false, stdio: ["ignore", "ignore", "ignore"] });
-    child.on("error", () => resolve());
-    child.on("close", () => resolve());
+async function rgMatchingLines(command: string, args: string[]): Promise<Array<{ path: string; lineNumber: number }> | undefined> {
+  return new Promise((resolve) => {
+    const matches: Array<{ path: string; lineNumber: number }> = [];
+    const child = spawn(command, args, { shell: false, stdio: ["ignore", "pipe", "ignore"] });
+    let stdout = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.on("error", () => resolve(undefined));
+    child.on("close", (code) => {
+      if (code !== 0 && code !== 1) { resolve(undefined); return; }
+      for (const line of stdout.split("\n")) {
+        if (!line) continue;
+        try {
+          const event = JSON.parse(line);
+          if (event.type !== "match") continue;
+          const path = event.data?.path?.text;
+          const lineNumber = event.data?.line_number;
+          if (typeof path === "string" && Number.isInteger(lineNumber)) matches.push({ path, lineNumber });
+        } catch { resolve(undefined); return; }
+      }
+      resolve(matches);
+    });
   });
+}
+
+async function readRecordAtLine(path: string, lineNumber: number): Promise<CandidateRecord | undefined> {
+  try {
+    const line = (await readFile(path, "utf8")).split("\n")[lineNumber - 1];
+    return line ? JSON.parse(line) as CandidateRecord : undefined;
+  } catch { return undefined; }
 }
 
 async function* readAllRecords(options: SearchOptions): AsyncGenerator<CandidateRecord> {

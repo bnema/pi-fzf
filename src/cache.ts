@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
-import { access, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { access, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, join, parse, resolve } from "node:path";
+import { homedir, tmpdir } from "node:os";
 
 import { acquireLock } from "./locks.js";
 import { resolveCacheRoot, resolveSessionRoot, type PathResolutionOptions } from "./paths.js";
@@ -38,6 +39,7 @@ export interface CacheStats { sourceCount: number; recordCount: number; shardCou
 export interface DoctorReport extends CacheStats { issues: string[] }
 
 const DEFAULT_CONFIG_HASH = "default";
+const CACHE_SENTINEL = ".pi-fzf-cache";
 
 export async function syncCache(options: CacheOptions = {}): Promise<SyncResult> {
   return withLock(options, async (ctx) => {
@@ -85,7 +87,8 @@ export async function syncCache(options: CacheOptions = {}): Promise<SyncResult>
 
 export async function rebuildCache(options: CacheOptions = {}): Promise<SyncResult> {
   const ctx = context(options);
-  await rm(ctx.cacheRoot, { recursive: true, force: true });
+  await validateCacheRootForDestructiveOperation(ctx);
+  await removeCacheOwnedContents(ctx.cacheRoot);
   return syncCache(options);
 }
 
@@ -149,10 +152,33 @@ async function readManifest(ctx: ReturnType<typeof context>): Promise<CacheManif
   try { return JSON.parse(await readFile(join(ctx.cacheRoot, "manifest.json"), "utf8")); } catch { return freshManifest(ctx); }
 }
 async function writeManifest(ctx: ReturnType<typeof context>, manifest: CacheManifest) { await atomicWrite(join(ctx.cacheRoot, "manifest.json"), JSON.stringify(manifest, null, 2)); }
-async function ensureLayout(cacheRoot: string) { await mkdir(join(cacheRoot, "records"), { recursive: true, mode: 0o700 }); await mkdir(join(cacheRoot, "sessions"), { recursive: true, mode: 0o700 }); }
+async function ensureLayout(cacheRoot: string) { await mkdir(join(cacheRoot, "records"), { recursive: true, mode: 0o700 }); await mkdir(join(cacheRoot, "sessions"), { recursive: true, mode: 0o700 }); await writeFile(join(cacheRoot, CACHE_SENTINEL), "pi-fzf cache\n", { mode: 0o600 }); }
 async function atomicWrite(path: string, content: string) { await mkdir(dirname(path), { recursive: true, mode: 0o700 }); const tmp = `${path}.tmp-${process.pid}-${Date.now()}`; await writeFile(tmp, content, { mode: 0o600 }); await rename(tmp, path); }
 async function removeSourceShards(source: CacheSourceEntry) { await rm(source.paths.records, { force: true }); await rm(source.paths.session, { force: true }); }
 async function exists(path: string) { try { await access(path, constants.F_OK); return true; } catch { return false; } }
+
+async function validateCacheRootForDestructiveOperation(ctx: ReturnType<typeof context>) {
+  const cacheRoot = resolve(ctx.cacheRoot);
+  const sessionRoot = resolve(ctx.sessionRoot);
+  const forbidden = new Set([parse(cacheRoot).root, resolve(homedir()), resolve(process.cwd()), resolve(tmpdir()), sessionRoot]);
+  if (forbidden.has(cacheRoot)) throw new Error(`refusing to rebuild unsafe cache root: ${ctx.cacheRoot}`);
+  if (sessionRoot.startsWith(cacheRoot + "/") || cacheRoot.startsWith(sessionRoot + "/")) throw new Error(`refusing to rebuild cache root overlapping session root: ${ctx.cacheRoot}`);
+
+  const parent = dirname(cacheRoot);
+  if (await exists(cacheRoot)) {
+    const [realCacheRoot, realParent] = await Promise.all([realpath(cacheRoot), realpath(parent).catch(() => parent)]);
+    if (realCacheRoot === realParent || forbidden.has(realCacheRoot)) throw new Error(`refusing to rebuild unsafe cache root: ${ctx.cacheRoot}`);
+    if (!(await exists(join(cacheRoot, CACHE_SENTINEL))) && !(await exists(join(cacheRoot, "manifest.json")))) {
+      throw new Error(`refusing to rebuild cache root without pi-fzf sentinel or manifest: ${ctx.cacheRoot}`);
+    }
+  }
+}
+
+async function removeCacheOwnedContents(cacheRoot: string) {
+  for (const name of ["records", "sessions", "manifest.json", "lock", CACHE_SENTINEL]) {
+    await rm(join(cacheRoot, name), { recursive: true, force: true });
+  }
+}
 
 async function findJsonl(root: string): Promise<string[]> {
   const out: string[] = [];

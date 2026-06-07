@@ -56,6 +56,15 @@ describe("cache locks", () => {
     const stale = await acquireLock(lockPath, { now: () => 20_000, staleMs: 10 });
     await stale.release();
   });
+
+  it("does not remove stale-looking locks for a live pid on this host", async () => {
+    const { cacheRoot } = await tempRoot();
+    const lockPath = join(cacheRoot, "lock");
+    await mkdir(cacheRoot, { recursive: true });
+    await writeFile(lockPath, JSON.stringify({ pid: process.pid, hostname: (await import("node:os")).hostname(), timestamp: new Date(0).toISOString() }));
+
+    await expect(acquireLock(lockPath, { now: () => 20_000, staleMs: 10 })).rejects.toThrow(/already held/);
+  });
 });
 
 describe("session cache", () => {
@@ -115,14 +124,24 @@ describe("session cache", () => {
     expect((await manifest(cacheRoot)).configHash).toBe("b");
   });
 
-  it("rebuilds from scratch", async () => {
+  it("rebuilds from scratch by removing only cache-owned contents", async () => {
     const { cacheRoot, sessionRoot } = await tempRoot();
     await sessionFile(sessionRoot);
     await syncCache({ cacheRoot, sessionRoot });
     await writeFile(join(cacheRoot, "records", "orphan.jsonl"), "{}");
+    await writeFile(join(cacheRoot, "unowned.txt"), "keep");
 
     expect(await rebuildCache({ cacheRoot, sessionRoot })).toMatchObject({ indexed: 1, parsed: 1 });
     await expect(stat(join(cacheRoot, "records", "orphan.jsonl"))).rejects.toThrow();
+    await expect(stat(join(cacheRoot, "unowned.txt"))).resolves.toBeTruthy();
+  });
+
+  it("refuses to rebuild unsafe cache roots", async () => {
+    const { dir, sessionRoot } = await tempRoot();
+    await mkdir(join(dir, "unsafe"), { recursive: true });
+
+    await expect(rebuildCache({ cacheRoot: dir, sessionRoot })).rejects.toThrow(/sentinel|unsafe|overlapping/);
+    await expect(rebuildCache({ cacheRoot: sessionRoot, sessionRoot })).rejects.toThrow(/unsafe|overlapping/);
   });
 
   it("cleans orphan shards", async () => {
