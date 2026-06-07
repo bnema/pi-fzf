@@ -103,7 +103,7 @@ function readOptionValue(args: string[], index: number): { value: string; index:
 
 function coloredRole(role: string): string {
   const color = role === "user" ? "\u001b[36;1m" : role === "assistant" ? "\u001b[32;1m" : role === "compaction" ? "\u001b[35;1m" : "\u001b[33;1m";
-  return `${color}[${role}]\u001b[0m`;
+  return `[${color}${role}\u001b[0m]`;
 }
 
 function actionFromOptions(o: CliOptions): SelectedAction {
