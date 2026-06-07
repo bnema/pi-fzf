@@ -8,26 +8,62 @@
 - [`ripgrep`](https://github.com/BurntSushi/ripgrep) (`rg`) for CLI candidate prefiltering.
 - [`fzf`](https://github.com/junegunn/fzf) for interactive shell selection. `fzf` >= 0.71 is recommended for stable `--accept-nth`, `--id-nth`, and result tracking behavior.
 
-## Install and development loading
+## Quick start
 
-From a local checkout:
+There are two separate ways to use `pi-fzf`:
+
+1. **Shell search** with `pi-fzf`/`pi-fzf-search`. This does not require loading the Pi plugin.
+2. **Pi slash command** with `/fzf`. This requires installing or loading the Pi plugin.
+
+### 1. Build the local checkout
+
+```sh
+cd /path/to/pi-fzf
+npm install
+npm run build
+```
+
+### 2. Try shell search
+
+From the checkout:
+
+```sh
+node bin/pi-fzf.js "thing I remember"
+```
+
+Or install the included wrapper somewhere on your `PATH`:
+
+```sh
+mkdir -p ~/.local/bin
+cp examples/pi-fzf-search ~/.local/bin/pi-fzf-search
+chmod +x ~/.local/bin/pi-fzf-search
+pi-fzf-search "thing I remember"
+```
+
+The wrapper expects the checkout at `$HOME/dev/projects/pi-fzf`. If yours is elsewhere, set:
+
+```sh
+PI_FZF_HOME=/path/to/pi-fzf pi-fzf-search "thing I remember"
+```
+
+### 3. Enable `/fzf` inside Pi
+
+Only needed for the Pi slash command:
 
 ```sh
 pi install /path/to/pi-fzf
+```
+
+Then restart Pi and use:
+
+```text
+/fzf thing I remember
 ```
 
 For extension development, load the checkout without installing:
 
 ```sh
 pi -e /path/to/pi-fzf
-```
-
-Build before invoking the package bin directly from a checkout:
-
-```sh
-npm install
-npm run build
-node bin/pi-fzf.js --help
 ```
 
 ## CLI usage
