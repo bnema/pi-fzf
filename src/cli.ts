@@ -90,13 +90,19 @@ function parseOptions(args: string[]): CliOptions {
     else if (a === "--key") { const next = readOptionValue(args, i); if (next !== undefined) { o.key = next.value; i = next.index; } }
     else if (a === "--role") { const next = readOptionValue(args, i); if (next !== undefined) { o.role = next.value as any; i = next.index; } } else if (a === "--project") { const next = readOptionValue(args, i); if (next !== undefined) { o.project = next.value; i = next.index; } }
     else if (a === "--cwd") { const next = readOptionValue(args, i); if (next !== undefined) { o.cwd = next.value; i = next.index; } } else if (a === "--since") { const next = readOptionValue(args, i); if (next !== undefined) { o.since = next.value; i = next.index; } } else if (a === "--before") { const next = readOptionValue(args, i); if (next !== undefined) { o.before = next.value; i = next.index; } }
-    else if (a === "--named-only") o.namedOnly = true; else if (a === "--limit") o.limit = Number(args[++i]);
+    else if (a === "--named-only") o.namedOnly = true; else if (a === "--limit") { const next = readOptionValue(args, i); if (next === undefined) throw new Error("--limit requires a positive integer"); o.limit = parsePositiveInteger(next.value, "--limit"); i = next.index; }
     else if (a === "--or") o.tokenMode = "or"; else if (a === "--regex") o.matchMode = "regex"; else if (a === "--fixed") o.matchMode = "fixed";
     else terms.push(a);
   }
   if (o.query === undefined && terms.length) o.query = terms.join(" ");
   return o;
 }
+function parsePositiveInteger(value: string, name: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`${name} requires a positive integer`);
+  return parsed;
+}
+
 function readOptionValue(args: string[], index: number, options: { allowLeadingDash?: boolean } = {}): { value: string; index: number } | undefined {
   const value = args[index + 1];
   if (value === undefined || (!options.allowLeadingDash && value.startsWith("--"))) return undefined;

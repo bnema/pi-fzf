@@ -67,6 +67,12 @@ describe("cli", () => {
     expect(out).toContain("cli-session");
   });
 
+  it("rejects invalid limits", async () => {
+    await expect(main(["search", "find", "--no-fzf", "--limit"])).rejects.toThrow(/--limit requires a positive integer/);
+    await expect(main(["search", "find", "--no-fzf", "--limit", "0"])).rejects.toThrow(/--limit requires a positive integer/);
+    await expect(main(["search", "find", "--no-fzf", "--limit", "nope"])).rejects.toThrow(/--limit requires a positive integer/);
+  });
+
   it("prints preview for a selected key", async () => {
     const { cacheRoot, sessionRoot } = await roots();
     process.env.PI_FZF_CACHE_DIR = cacheRoot;
