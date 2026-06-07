@@ -15,4 +15,9 @@ if [[ ! -f "$PI_FZF_HOME/dist/src/cli.js" ]]; then
   exit 1
 fi
 
+if [[ -z "${PI_FZF_COMMAND:-}" ]]; then
+  PI_FZF_COMMAND="$(command -v "$(basename "$0")" 2>/dev/null || true)"
+  export PI_FZF_COMMAND="${PI_FZF_COMMAND:-$0}"
+fi
+
 exec node "$PI_FZF_HOME/bin/pi-fzf.js" "$@"

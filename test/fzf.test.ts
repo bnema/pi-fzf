@@ -50,6 +50,7 @@ describe("buildFzfArgs", () => {
     expect(args).toContain("--delimiter=\t");
     expect(args).toContain("--with-nth=2");
     expect(args).toContain("--nth=2,3");
+    expect(args).toContain("--ignore-case");
     expect(args).toContain("--accept-nth=1");
     expect(args).toContain("--id-nth=1");
     expect(args).toContain("--track");
@@ -72,5 +73,12 @@ describe("buildFzfArgs", () => {
     expect(args).toContain("--bind=start:reload:pi-fzf candidates --query {q} || true");
     expect(args).toContain("--bind=change:reload:pi-fzf candidates --query {q} || true");
     expect(args).toContain("--bind=ctrl-f:unbind(change)+change-prompt(fzf> )+enable-search");
+  });
+
+  it("uses a configurable pi-fzf command for previews and reloads", () => {
+    const args = buildFzfArgs({ version: version("0.73.1"), dynamicRg: true, fzfCommand: "/home/me/.local/bin/pi-fzf-search" });
+
+    expect(args).toContain("--preview=/home/me/.local/bin/pi-fzf-search preview --key {1}");
+    expect(args).toContain("--bind=start:reload:/home/me/.local/bin/pi-fzf-search candidates --query {q} || true");
   });
 });

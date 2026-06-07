@@ -12,6 +12,7 @@ export interface FzfRunOptions {
   version?: FzfVersion;
   query?: string;
   dynamicRg?: boolean;
+  fzfCommand?: string;
 }
 
 export function parseFzfVersion(raw: string): FzfVersion | undefined {
@@ -78,11 +79,13 @@ export function supportsIdNth(version: FzfVersion | undefined): boolean {
 }
 
 export function buildFzfArgs(options: FzfRunOptions): string[] {
+  const piFzfCommand = shellQuote(options.fzfCommand ?? process.env.PI_FZF_COMMAND ?? "pi-fzf");
   const args = [
     "--delimiter=\t",
     "--with-nth=2",
     "--nth=2,3",
-    "--preview=pi-fzf preview --key {1}",
+    "--ignore-case",
+    `--preview=${piFzfCommand} preview --key {1}`,
   ];
 
   if (supportsAcceptNth(options.version)) {
@@ -98,7 +101,7 @@ export function buildFzfArgs(options: FzfRunOptions): string[] {
   }
 
   if (options.dynamicRg === true) {
-    const reloadCandidates = "pi-fzf candidates --query {q} || true";
+    const reloadCandidates = `${piFzfCommand} candidates --query {q} || true`;
     args.push(
       "--disabled",
       "--prompt=rg>",
@@ -109,6 +112,11 @@ export function buildFzfArgs(options: FzfRunOptions): string[] {
   }
 
   return args;
+}
+
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_./:-]+$/.test(value)) return value;
+  return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 export async function runFzf(options: FzfRunOptions): Promise<string | undefined> {

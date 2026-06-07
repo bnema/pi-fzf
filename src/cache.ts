@@ -154,7 +154,25 @@ function validManifestOrFresh(manifest: CacheManifest, ctx: ReturnType<typeof co
 }
 
 function isManifestShape(manifest: CacheManifest): boolean {
-  return !!manifest && typeof manifest === "object" && typeof manifest.sources === "object" && manifest.sources !== null && !Array.isArray(manifest.sources);
+  if (!manifest || typeof manifest !== "object" || typeof manifest.sources !== "object" || manifest.sources === null || Array.isArray(manifest.sources)) return false;
+  return Object.values(manifest.sources).every(isCacheSourceEntry);
+}
+
+function isCacheSourceEntry(source: unknown): source is CacheSourceEntry {
+  if (!source || typeof source !== "object") return false;
+  const candidate = source as Partial<CacheSourceEntry>;
+  const paths = candidate.paths;
+  return typeof candidate.sourceKey === "string"
+    && typeof candidate.sessionId === "string"
+    && typeof candidate.mtime === "number"
+    && typeof candidate.size === "number"
+    && typeof candidate.recordCount === "number"
+    && typeof candidate.indexedAt === "string"
+    && !!paths
+    && typeof paths === "object"
+    && typeof paths.source === "string"
+    && typeof paths.records === "string"
+    && typeof paths.session === "string";
 }
 
 async function readManifest(ctx: ReturnType<typeof context>): Promise<CacheManifest> {

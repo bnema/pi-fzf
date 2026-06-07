@@ -182,6 +182,35 @@ describe("session cache", () => {
     expect(report.issues).toContain("manifest metadata does not match current cache configuration");
   });
 
+  it("handles malformed manifest source entries without throwing", async () => {
+    const { cacheRoot, sessionRoot } = await tempRoot();
+    await mkdir(join(cacheRoot, "records"), { recursive: true });
+    await mkdir(join(cacheRoot, "sessions"), { recursive: true });
+    await writeFile(join(cacheRoot, "records", "orphan.jsonl"), "{}\n");
+    await writeFile(join(cacheRoot, "manifest.json"), JSON.stringify({
+      version: 1,
+      extractorVersion: 1,
+      configHash: "default",
+      sessionRoot,
+      updatedAt: "2026-06-07T00:00:00.000Z",
+      sources: {
+        [join(sessionRoot, "bad.jsonl")]: {
+          sourceKey: "bad",
+          sessionId: "bad-session",
+          mtime: 1,
+          size: 1,
+          recordCount: 1,
+          indexedAt: "2026-06-07T00:00:00.000Z"
+        }
+      }
+    }));
+
+    await expect(cleanCache({ cacheRoot, sessionRoot })).resolves.toEqual({ removed: 1 });
+    await expect(getCacheStats({ cacheRoot, sessionRoot })).resolves.toMatchObject({ sourceCount: 0, recordCount: 0 });
+    const report = await doctorCache({ cacheRoot, sessionRoot });
+    expect(report.issues).toContain("manifest metadata does not match current cache configuration");
+  });
+
   it("returns useful cache stats", async () => {
     const { cacheRoot, sessionRoot } = await tempRoot();
     await sessionFile(sessionRoot);
