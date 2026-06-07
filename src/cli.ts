@@ -46,9 +46,10 @@ export async function main(args: string[] = process.argv.slice(2)): Promise<void
   if (!selected) return;
   const record = await findRecordByKey(parseRecordKey(selected));
   if (!record) { process.exitCode = 1; return; }
+  const action = actionFromOptions(opts);
   const actionOptions: { exec?: boolean } = {};
-  if (opts.exec === true) actionOptions.exec = true;
-  await runSelectedAction(record, actionFromOptions(opts), actionOptions);
+  if (opts.exec === true || shouldExecEnter()) actionOptions.exec = true;
+  await runSelectedAction(record, action, actionOptions);
 }
 
 async function printSearch(opts: CliOptions) {
@@ -112,13 +113,14 @@ function actionFromOptions(o: CliOptions): SelectedAction {
   if (o.printSessionPath) return "print-session-path";
   if (o.printSnippet) return "print-snippet";
   const enter = process.env.PI_FZF_ENTER;
-  if (enter === "exec") { o.exec = true; return "resume"; }
+  if (enter === "exec") return "resume";
   if (enter === "path") return "print-session-path";
   if (enter === "id") return "print-session-id";
   if (enter === "json") return "json";
   if (process.env.PI_FZF_ACTION) return process.env.PI_FZF_ACTION as SelectedAction;
   return "resume";
 }
+function shouldExecEnter(): boolean { return process.env.PI_FZF_ENTER === "exec"; }
 function required(v: string | undefined, name: string): string { if (!v) throw new Error(`${name} is required`); return v; }
 function installPipeErrorHandler(): void {
   if (pipeErrorHandlerInstalled) return;
