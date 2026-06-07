@@ -17,18 +17,16 @@ There are two separate ways to use `pi-fzf`:
 
 ### 1. Install shell search
 
-From the public GitHub repository:
+From a local checkout:
 
 ```sh
-npm install -g github:bnema/pi-fzf --install-links=true
+git clone https://github.com/bnema/pi-fzf.git
+cd pi-fzf
+make install
 pi-fzf "thing I remember"
 ```
 
-If your npm setup still has trouble with GitHub shorthand installs, install the release tarball instead:
-
-```sh
-npm install -g https://github.com/bnema/pi-fzf/archive/refs/tags/v0.2.0.tar.gz
-```
+`make install` installs dependencies, builds `dist/`, and links `pi-fzf` into `~/.local/bin` by default. Make sure that directory is on your `PATH`; override it with `make install BINDIR=/path/to/bin` if needed.
 
 Optional wrapper alias:
 
@@ -59,8 +57,9 @@ Then restart Pi and use:
 
 ```sh
 cd /path/to/pi-fzf
-npm install
-npm run build
+make install
+npm run typecheck
+npm test
 node bin/pi-fzf.js "thing I remember"
 pi -e /path/to/pi-fzf
 ```
@@ -159,11 +158,11 @@ Privacy and permissions:
 ## Development
 
 ```sh
-npm install
+make install
 npm run typecheck
 npm test
 npm run build
 npm pack --dry-run
 ```
 
-The `pi-fzf` bin points at the built CLI in `dist/`, so run `npm run build` before invoking it directly.
+The `pi-fzf` bin points at the built CLI in `dist/`, so run `npm run build` or `make install` before invoking it directly.
