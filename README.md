@@ -96,7 +96,7 @@ Search options:
 - `--cwd <path>` filters by exact working directory.
 - `--since <timestamp>` and `--before <timestamp>` filter by timestamp string.
 - `--named-only` only returns sessions with a session name.
-- `--limit <n>` caps returned candidates.
+- `--limit <n>` caps returned candidates. The default cap is 10,000 most-recent matching snippets.
 - `--or` matches any query token instead of all tokens.
 - `--fixed` forces fixed-string matching; `--regex` treats the query as a regular expression; the default uses smart-case token matching.
 

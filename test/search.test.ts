@@ -18,7 +18,7 @@ async function fixture() {
     { sessionId: "s1", role: "user", content: "alpha beta", cwd: "/work/a", name: "proj-a", timestamp: "2024-01-01T00:00:00Z" },
     { sessionId: "s1", role: "assistant", content: "gamma delta", cwd: "/work/a", name: "proj-a", timestamp: "2024-01-02T00:00:00Z" },
   ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
-  await writeFile(join(sessionRoot, "b.jsonl"), JSON.stringify({ sessionId: "s2", role: "user", content: "omega", cwd: "/work/b" }) + "\n");
+  await writeFile(join(sessionRoot, "b.jsonl"), JSON.stringify({ sessionId: "s2", role: "user", content: "omega", cwd: "/work/b", timestamp: "2024-01-03T00:00:00Z" }) + "\n");
   await syncCache({ cacheRoot, sessionRoot });
   return { cacheRoot, sessionRoot };
 }
@@ -38,6 +38,13 @@ describe("search", () => {
     expect(await searchRecords({ cacheRoot, query: "g.mm.", matchMode: "regex" })).toHaveLength(1);
     expect(await searchRecords({ cacheRoot, role: "assistant", project: "proj-a", since: "2024-01-02" })).toHaveLength(1);
     expect(await searchRecords({ cacheRoot, namedOnly: true })).toHaveLength(2);
+  });
+
+  it("orders matches by most recent timestamp before applying limit", async () => {
+    const { cacheRoot } = await fixture();
+    const records = await searchRecords({ cacheRoot, tokenMode: "or", query: "alpha gamma omega", limit: 2 });
+
+    expect(records.map((record) => record.text)).toEqual(["omega", "gamma delta"]);
   });
 
   it("finds records by key and builds preview neighbors", async () => {

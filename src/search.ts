@@ -27,7 +27,7 @@ export interface SearchOptions extends PathResolutionOptions {
 
 export interface Preview { record: CandidateRecord; metadata: string[]; neighbors: CandidateRecord[] }
 
-const DEFAULT_LIMIT = 5000;
+const DEFAULT_LIMIT = 10_000;
 const RG_MATCH_OVERFETCH_FACTOR = 20;
 const RG_MATCH_MIN_PREFILTER = 200;
 const RG_MATCH_MAX_PREFILTER = 20_000;
@@ -40,9 +40,8 @@ export async function searchRecords(options: SearchOptions = {}): Promise<Candid
     if (!passesFilters(record, options)) continue;
     if (query && !matchesQuery(record, query, options)) continue;
     out.push(record);
-    if (out.length >= limit) break;
   }
-  return out;
+  return sortByRecency(out).slice(0, limit);
 }
 
 export async function candidateLines(options: SearchOptions = {}): Promise<string[]> {
@@ -92,16 +91,14 @@ export async function rgCandidateLines(options: SearchOptions = {}): Promise<str
   const out: CandidateRecord[] = [];
   const seen = new Set<string>();
   for (const [path, lineNumbers] of [...matchesByPath.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    if (out.length >= (options.limit ?? DEFAULT_LIMIT)) break;
     for (const record of await readRecordsAtLines(path, lineNumbers)) {
-      if (out.length >= (options.limit ?? DEFAULT_LIMIT)) break;
       const key = recordKey(record);
       if (seen.has(key) || !passesFilters(record, options) || !matchesQuery(record, query, options)) continue;
       seen.add(key);
       out.push(record);
     }
   }
-  return out.map(toCandidateLine);
+  return sortByRecency(out).slice(0, options.limit ?? DEFAULT_LIMIT).map(toCandidateLine);
 }
 
 function rgArgsForQuery(query: string, options: SearchOptions, recordsDir: string): string[] {
@@ -248,6 +245,24 @@ function matchesQuery(r: CandidateRecord, query: string, o: SearchOptions): bool
   const tokens = tokenize(query);
   const checks = tokens.map((t) => contains(hay, t, false));
   return (o.tokenMode ?? "and") === "or" ? checks.some(Boolean) : checks.every(Boolean);
+}
+
+function sortByRecency(records: CandidateRecord[]): CandidateRecord[] {
+  return [...records].sort((a, b) => compareRecordRecency(b, a));
+}
+
+function compareRecordRecency(a: CandidateRecord, b: CandidateRecord): number {
+  const timestampDelta = timestampMs(a.timestamp) - timestampMs(b.timestamp);
+  if (timestampDelta !== 0) return timestampDelta;
+  const pathDelta = a.sessionPath.localeCompare(b.sessionPath);
+  if (pathDelta !== 0) return pathDelta;
+  return a.sequence - b.sequence || a.chunkIndex - b.chunkIndex;
+}
+
+function timestampMs(timestamp: string | undefined): number {
+  if (!timestamp) return Number.NEGATIVE_INFINITY;
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
 }
 
 function contains(hay: string, needle: string, caseSensitive: boolean): boolean {
