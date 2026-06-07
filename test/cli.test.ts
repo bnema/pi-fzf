@@ -84,6 +84,22 @@ describe("cli", () => {
     expect(preview).toContain("session id: cli-session");
   });
 
+  it("prints the matched snippet instead of the newest session message", async () => {
+    const { cacheRoot, sessionRoot } = await roots();
+    process.env.PI_FZF_CACHE_DIR = cacheRoot;
+    process.env.PI_FZF_SESSION_ROOT = sessionRoot;
+    await writeFile(join(sessionRoot, "two.jsonl"), [
+      { sessionId: "snippet-session", role: "user", content: "matched old needle", cwd: "/work", timestamp: "2024-01-01T00:00:00Z" },
+      { sessionId: "snippet-session", role: "assistant", content: "new unrelated message", cwd: "/work", timestamp: "2024-01-02T00:00:00Z" },
+    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    await capture(() => main(["index"]));
+
+    const out = await capture(() => main(["search", "needle", "--no-fzf", "--print-snippet"]));
+
+    expect(out).toContain("matched old needle");
+    expect(out).not.toContain("new unrelated message");
+  });
+
   it("ignores preview calls with an empty fzf key", async () => {
     const out = await capture(() => main(["preview", "--key", "--query", "find"]));
 

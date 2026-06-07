@@ -91,7 +91,7 @@ export async function previewRecord(key: string, contextLines = 2, options: Sear
 
 export async function rgCandidateLines(options: SearchOptions = {}): Promise<string[]> {
   const query = options.query?.trim();
-  if (!query) return candidateLines(options);
+  if (!query || shouldScanForAndQuery(query, options)) return candidateLines(options);
   const cacheRoot = options.cacheRoot ?? resolveCacheRoot(options);
   const args = rgArgsForQuery(query, options, join(cacheRoot, "records"));
   const matchesByPath = await rgMatchingLines("rg", args, rgPrefilterLimit(options.limit ?? DEFAULT_LIMIT));
@@ -107,6 +107,10 @@ export async function rgCandidateLines(options: SearchOptions = {}): Promise<str
     }
   }
   return toSessionCandidateLines(out, options.limit ?? DEFAULT_LIMIT, options);
+}
+
+function shouldScanForAndQuery(query: string, options: SearchOptions): boolean {
+  return options.matchMode !== "regex" && (options.tokenMode ?? "and") === "and" && tokenize(query).length > 1;
 }
 
 function rgArgsForQuery(query: string, options: SearchOptions, recordsDir: string): string[] {
@@ -267,10 +271,10 @@ function toSessionCandidateLines(records: CandidateRecord[], limit: number, opti
     .map((records) => toSessionCandidateLine(records, options))
     .sort((a, b) => compareRecordRecency(b.bestRecord, a.bestRecord))
     .slice(0, limit)
-    .map((candidate) => `${candidate.sourceKey}\t${candidate.display}`);
+    .map((candidate) => `${candidate.key}\t${candidate.display}`);
 }
 
-function toSessionCandidateLine(records: CandidateRecord[], options: SearchOptions): { sourceKey: string; display: string; searchText: string; bestRecord: CandidateRecord } {
+function toSessionCandidateLine(records: CandidateRecord[], options: SearchOptions): { key: string; display: string; searchText: string; bestRecord: CandidateRecord } {
   const sorted = sortByRecency(records);
   const bestRecord = sorted[0]!;
   const label = bestRecord.sessionName ?? projectFromCwd(bestRecord.cwd) ?? bestRecord.sessionId.slice(0, 8);
@@ -278,7 +282,7 @@ function toSessionCandidateLine(records: CandidateRecord[], options: SearchOptio
   const matchLabel = records.length === 1 ? "1 match" : `${records.length} matches`;
   const snippet = highlightForQuery(visibleExcerpt(bestRecord.text, options.query, options), options.query, options);
   return {
-    sourceKey: bestRecord.sourceKey,
+    key: recordKey(bestRecord),
     display: [label, date, matchLabel, snippet].filter(Boolean).join(" — "),
     searchText: [bestRecord.cwd, bestRecord.sessionName, bestRecord.sessionId, ...records.slice(0, 20).map((record) => record.text)].filter(Boolean).join(" "),
     bestRecord,

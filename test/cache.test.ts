@@ -115,6 +115,19 @@ describe("session cache", () => {
     expect(records).toContain("repair needle");
   });
 
+  it("reports and repairs corrupt shards for unchanged sources", async () => {
+    const { cacheRoot, sessionRoot } = await tempRoot();
+    const source = await sessionFile(sessionRoot, "one.jsonl", "repair corrupt needle");
+    const recordsPath = join(cacheRoot, "records", `${sourceKeyForPath(source)}.jsonl`);
+    await syncCache({ cacheRoot, sessionRoot });
+    await writeFile(recordsPath, "{not json}\n");
+
+    expect((await doctorCache({ cacheRoot, sessionRoot })).issues.some((issue) => issue.includes("corrupt records shard"))).toBe(true);
+    expect(await syncCache({ cacheRoot, sessionRoot })).toMatchObject({ indexed: 1, parsed: 1 });
+    expect(await readFile(recordsPath, "utf8")).toContain("repair corrupt needle");
+    expect((await doctorCache({ cacheRoot, sessionRoot })).issues).toEqual([]);
+  });
+
   it("removes shards for deleted sources", async () => {
     const { cacheRoot, sessionRoot } = await tempRoot();
     const source = await sessionFile(sessionRoot);

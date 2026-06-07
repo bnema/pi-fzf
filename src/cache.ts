@@ -113,8 +113,8 @@ export async function doctorCache(options: CacheOptions = {}): Promise<DoctorRep
   if (manifestInvalid) issues.push("manifest metadata does not match current cache configuration");
   for (const [sourcePath, source] of Object.entries(manifestInvalid ? {} : manifest.sources)) {
     if (!(await exists(sourcePath))) issues.push(`missing source: ${sourcePath}`);
-    if (!(await exists(source.paths.records))) issues.push(`missing records shard: ${source.paths.records}`);
-    if (!(await exists(source.paths.session))) issues.push(`missing session metadata: ${source.paths.session}`);
+    const cacheIssue = await sourceCacheIssue(source);
+    if (cacheIssue) issues.push(cacheIssue);
   }
   return { ...stats, issues };
 }
@@ -182,7 +182,29 @@ async function writeManifest(ctx: ReturnType<typeof context>, manifest: CacheMan
 async function ensureLayout(cacheRoot: string) { await mkdir(join(cacheRoot, "records"), { recursive: true, mode: 0o700 }); await mkdir(join(cacheRoot, "sessions"), { recursive: true, mode: 0o700 }); await writeFile(join(cacheRoot, CACHE_SENTINEL), "pi-fzf cache\n", { mode: 0o600 }); }
 async function atomicWrite(path: string, content: string) { await mkdir(dirname(path), { recursive: true, mode: 0o700 }); const tmp = `${path}.tmp-${process.pid}-${Date.now()}`; await writeFile(tmp, content, { mode: 0o600 }); await rename(tmp, path); }
 async function removeSourceShards(source: CacheSourceEntry) { await rm(source.paths.records, { force: true }); await rm(source.paths.session, { force: true }); }
-async function sourceCacheComplete(source: CacheSourceEntry): Promise<boolean> { return await exists(source.paths.records) && await exists(source.paths.session); }
+async function sourceCacheComplete(source: CacheSourceEntry): Promise<boolean> { return (await sourceCacheIssue(source)) === undefined; }
+async function sourceCacheIssue(source: CacheSourceEntry): Promise<string | undefined> {
+  if (!(await exists(source.paths.records))) return `missing records shard: ${source.paths.records}`;
+  const recordsIssue = await validateRecordsShard(source.paths.records, source.recordCount);
+  if (recordsIssue) return recordsIssue;
+  if (!(await exists(source.paths.session))) return `missing session metadata: ${source.paths.session}`;
+  try {
+    const metadata = JSON.parse(await readFile(source.paths.session, "utf8"));
+    if (!metadata || typeof metadata !== "object") return `corrupt session metadata: ${source.paths.session}`;
+  } catch { return `corrupt session metadata: ${source.paths.session}`; }
+  return undefined;
+}
+async function validateRecordsShard(path: string, expectedCount: number): Promise<string | undefined> {
+  let count = 0;
+  try {
+    for (const line of (await readFile(path, "utf8")).split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      JSON.parse(line);
+      count++;
+    }
+  } catch { return `corrupt records shard: ${path}`; }
+  return count === expectedCount ? undefined : `records shard count mismatch: ${path}`;
+}
 async function exists(path: string) { try { await access(path, constants.F_OK); return true; } catch { return false; } }
 
 async function validateCacheRootForDestructiveOperation(ctx: ReturnType<typeof context>) {

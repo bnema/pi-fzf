@@ -98,6 +98,44 @@ describe("search", () => {
     expect(rgKeys).toEqual(scannedKeys);
   });
 
+  it("does not let the rg OR prefilter cap hide default AND matches", async () => {
+    const { cacheRoot } = await fixture();
+    const recordsDir = join(cacheRoot, "records");
+    const records = [
+      ...Array.from({ length: 250 }, (_, i) => ({
+        cacheVersion: 1,
+        extractorVersion: 1,
+        sourceKey: "bbbbbbbbbbbbbbbb",
+        sessionId: "large-and",
+        sessionPath: "/tmp/large-and.jsonl",
+        role: "user",
+        text: `common only ${i}`,
+        sequence: i,
+        chunkIndex: 0,
+        display: `large — user — common only ${i}`,
+        searchText: `common only ${i}`,
+      })),
+      {
+        cacheVersion: 1,
+        extractorVersion: 1,
+        sourceKey: "bbbbbbbbbbbbbbbb",
+        sessionId: "large-and",
+        sessionPath: "/tmp/large-and.jsonl",
+        role: "assistant",
+        text: "common rare",
+        sequence: 251,
+        chunkIndex: 0,
+        display: "large — assistant — common rare",
+        searchText: "common rare",
+      },
+    ];
+    await writeFile(join(recordsDir, "bbbbbbbbbbbbbbbb.jsonl"), records.map((record) => JSON.stringify(record)).join("\n") + "\n");
+
+    const lines = await rgCandidateLines({ cacheRoot, query: "common rare", limit: 1 });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("common rare");
+  });
+
   it("groups many rg matches from one shard into one session candidate", async () => {
     const { cacheRoot } = await fixture();
     const recordsDir = join(cacheRoot, "records");
@@ -118,7 +156,7 @@ describe("search", () => {
 
     const lines = await rgCandidateLines({ cacheRoot, query: "needle", limit: 3 });
     expect(lines).toHaveLength(1);
-    expect(lines[0]?.split("\t")[0]).toBe("aaaaaaaaaaaaaaaa");
+    expect(lines[0]?.split("\t")[0]?.split(":")[0]).toBe("aaaaaaaaaaaaaaaa");
     expect(lines[0]).toContain("200 matches");
   });
 
