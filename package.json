@@ -10,6 +10,14 @@
   "bin": {
     "pi-fzf": "./bin/pi-fzf.js"
   },
+  "files": [
+    "bin/",
+    "dist/",
+    "extensions/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
