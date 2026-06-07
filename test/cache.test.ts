@@ -168,6 +168,20 @@ describe("session cache", () => {
     expect((await manifest(cacheRoot)).sources[source]).toBeTruthy();
   });
 
+  it("handles malformed manifest objects without throwing", async () => {
+    const { cacheRoot, sessionRoot } = await tempRoot();
+    await mkdir(cacheRoot, { recursive: true });
+    await writeFile(join(cacheRoot, "manifest.json"), JSON.stringify({ sources: null }));
+    await mkdir(join(cacheRoot, "records"), { recursive: true });
+    await mkdir(join(cacheRoot, "sessions"), { recursive: true });
+    await writeFile(join(cacheRoot, "records", "orphan.jsonl"), "{}\n");
+
+    await expect(cleanCache({ cacheRoot, sessionRoot })).resolves.toEqual({ removed: 1 });
+    await expect(getCacheStats({ cacheRoot, sessionRoot })).resolves.toMatchObject({ sourceCount: 0, recordCount: 0 });
+    const report = await doctorCache({ cacheRoot, sessionRoot });
+    expect(report.issues).toContain("manifest metadata does not match current cache configuration");
+  });
+
   it("returns useful cache stats", async () => {
     const { cacheRoot, sessionRoot } = await tempRoot();
     await sessionFile(sessionRoot);

@@ -94,7 +94,7 @@ export async function rebuildCache(options: CacheOptions = {}): Promise<SyncResu
 
 export async function cleanCache(options: CacheOptions = {}): Promise<{ removed: number }> {
   return withLock(options, async (ctx) => {
-    const manifest = await readManifest(ctx);
+    const manifest = validManifestOrFresh(await readManifest(ctx), ctx);
     const live = new Set(Object.values(manifest.sources).flatMap((s) => [s.paths.records, s.paths.session]));
     let removed = 0;
     for (const dir of [join(ctx.cacheRoot, "records"), join(ctx.cacheRoot, "sessions")]) {
@@ -109,8 +109,9 @@ export async function doctorCache(options: CacheOptions = {}): Promise<DoctorRep
   const manifest = await readManifest(ctx);
   const stats = await getCacheStats(options);
   const issues: string[] = [];
-  if (invalidManifest(manifest, ctx)) issues.push("manifest metadata does not match current cache configuration");
-  for (const [sourcePath, source] of Object.entries(manifest.sources)) {
+  const manifestInvalid = invalidManifest(manifest, ctx);
+  if (manifestInvalid) issues.push("manifest metadata does not match current cache configuration");
+  for (const [sourcePath, source] of Object.entries(manifestInvalid ? {} : manifest.sources)) {
     if (!(await exists(sourcePath))) issues.push(`missing source: ${sourcePath}`);
     if (!(await exists(source.paths.records))) issues.push(`missing records shard: ${source.paths.records}`);
     if (!(await exists(source.paths.session))) issues.push(`missing session metadata: ${source.paths.session}`);
@@ -120,7 +121,7 @@ export async function doctorCache(options: CacheOptions = {}): Promise<DoctorRep
 
 export async function getCacheStats(options: CacheOptions = {}): Promise<CacheStats> {
   const ctx = context(options);
-  const manifest = await readManifest(ctx);
+  const manifest = validManifestOrFresh(await readManifest(ctx), ctx);
   const recordFiles = await listFiles(join(ctx.cacheRoot, "records"));
   const sessionFiles = await listFiles(join(ctx.cacheRoot, "sessions"));
   const allFiles = [join(ctx.cacheRoot, "manifest.json"), ...recordFiles, ...sessionFiles].filter((p) => p);
@@ -145,7 +146,15 @@ function freshManifest(ctx: ReturnType<typeof context>): CacheManifest {
 }
 
 function invalidManifest(manifest: CacheManifest, ctx: ReturnType<typeof context>) {
-  return manifest.version !== CACHE_VERSION || manifest.extractorVersion !== EXTRACTOR_VERSION || manifest.configHash !== ctx.configHash || manifest.sessionRoot !== ctx.sessionRoot;
+  return !isManifestShape(manifest) || manifest.version !== CACHE_VERSION || manifest.extractorVersion !== EXTRACTOR_VERSION || manifest.configHash !== ctx.configHash || manifest.sessionRoot !== ctx.sessionRoot;
+}
+
+function validManifestOrFresh(manifest: CacheManifest, ctx: ReturnType<typeof context>): CacheManifest {
+  return invalidManifest(manifest, ctx) ? freshManifest(ctx) : manifest;
+}
+
+function isManifestShape(manifest: CacheManifest): boolean {
+  return !!manifest && typeof manifest === "object" && typeof manifest.sources === "object" && manifest.sources !== null && !Array.isArray(manifest.sources);
 }
 
 async function readManifest(ctx: ReturnType<typeof context>): Promise<CacheManifest> {

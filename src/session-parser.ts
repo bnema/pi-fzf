@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 
 import type { SearchRole } from "./types.js";
@@ -44,9 +44,10 @@ export async function parseSessionFile(sessionPath: string): Promise<ParsedSessi
       continue;
     }
 
-    sessionId ||= stringValue(entry.sessionId) ?? stringValue(entry.session_id) ?? "";
-    cwd ||= stringValue(entry.cwd);
-    sessionName ||= stringValue(entry.name) ?? stringValue(entry.sessionName) ?? stringValue(entry.session_name);
+    const metadata = sessionMetadata(entry);
+    if (!sessionId && metadata.sessionId) sessionId = metadata.sessionId;
+    if (!cwd && metadata.cwd) cwd = metadata.cwd;
+    if (!sessionName && metadata.sessionName) sessionName = metadata.sessionName;
 
     const summary = summaryText(entry);
     if (summary) {
@@ -56,14 +57,15 @@ export async function parseSessionFile(sessionPath: string): Promise<ParsedSessi
 
     if (isNoisyTopLevelEntry(entry)) continue;
 
-    const role = stringValue(entry.role);
-    if (!role || !TEXT_ROLES.has(role) || NOISY_ROLES.has(role)) continue;
+    const message = messageEnvelope(entry);
+    if (!message || !TEXT_ROLES.has(message.role) || NOISY_ROLES.has(message.role)) continue;
 
-    for (const text of extractTextBlocks(entry.message?.content ?? entry.content)) {
-      records.push(baseRecord(entry, role as "user" | "assistant", text, sequence++, cwd, sessionName));
+    for (const text of extractTextBlocks(message.content)) {
+      records.push(baseRecord(entry, message.role, text, sequence++, cwd, sessionName));
     }
   }
 
+  sessionId ||= safeSessionIdFromPath(sourcePath);
   const parsed: Partial<ParsedSession> & Pick<ParsedSession, "sessionId" | "sourcePath" | "records"> = { sessionId, sourcePath, records };
   if (cwd !== undefined) parsed.cwd = cwd;
   if (sessionName !== undefined) parsed.sessionName = sessionName;
@@ -79,6 +81,37 @@ function baseRecord(entry: any, role: Exclude<SearchRole, "session">, text: stri
   if (cwd !== undefined) record.cwd = cwd;
   if (sessionName !== undefined) record.sessionName = sessionName;
   return record;
+}
+
+function sessionMetadata(entry: any): { sessionId?: string; cwd?: string; sessionName?: string } {
+  const metadata = entry && typeof entry === "object" ? entry : {};
+  const nested = metadata.session && typeof metadata.session === "object" ? metadata.session : {};
+  const isSessionHeader = stringValue(metadata.type) === "session";
+  const result: { sessionId?: string; cwd?: string; sessionName?: string } = {};
+  const sessionId = stringValue(metadata.sessionId) ?? stringValue(metadata.session_id) ?? (isSessionHeader ? stringValue(metadata.id) : undefined) ?? stringValue((nested as any).id);
+  const cwd = stringValue(metadata.cwd) ?? stringValue((nested as any).cwd);
+  const sessionName = stringValue(metadata.name) ?? stringValue(metadata.sessionName) ?? stringValue(metadata.session_name) ?? stringValue((nested as any).name);
+  if (sessionId !== undefined) result.sessionId = sessionId;
+  if (cwd !== undefined) result.cwd = cwd;
+  if (sessionName !== undefined) result.sessionName = sessionName;
+  return result;
+}
+
+function messageEnvelope(entry: any): { role: "user" | "assistant"; content: unknown } | undefined {
+  const nested = entry?.message && typeof entry.message === "object" ? entry.message : undefined;
+  const role = stringValue(nested?.role) ?? stringValue(entry.role);
+  if (role !== "user" && role !== "assistant") return undefined;
+  return { role, content: nested && "content" in nested ? nested.content : entry.content };
+}
+
+function safeSessionIdFromPath(sourcePath: string): string {
+  return basename(sourcePath, ".jsonl") || sourceKeyFragment(sourcePath);
+}
+
+function sourceKeyFragment(value: string): string {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+  return `session-${Math.abs(hash)}`;
 }
 
 function summaryText(entry: any): { role: "compaction" | "branch_summary"; text: string } | undefined {

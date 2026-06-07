@@ -18,6 +18,24 @@ describe("parseSessionFile", () => {
     ]);
   });
 
+  it("extracts real Pi message envelopes and session headers", async () => {
+    const parsed = await parseSessionFile(fixture("real-pi-envelope.jsonl"));
+
+    expect(parsed.sessionId).toBe("real-session");
+    expect(parsed.cwd).toBe("/tmp/proj");
+    expect(parsed.records.map((r) => [r.role, r.text])).toEqual([
+      ["user", "real user text"],
+      ["assistant", "real assistant text"],
+    ]);
+    expect(parsed.records.every((r) => r.cwd === "/tmp/proj")).toBe(true);
+  });
+
+  it("falls back to a non-empty session id from the source filename", async () => {
+    const parsed = await parseSessionFile(fixture("missing-session-metadata.jsonl"));
+
+    expect(parsed.sessionId).toBe("missing-session-metadata");
+  });
+
   it("preserves named sessions", async () => {
     const parsed = await parseSessionFile(fixture("v3-named-session.jsonl"));
 

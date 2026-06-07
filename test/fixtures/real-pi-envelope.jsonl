@@ -1,0 +1,3 @@
+{"type":"session","id":"real-session","cwd":"/tmp/proj"}
+{"type":"message","id":"u1","message":{"role":"user","content":"real user text"}}
+{"type":"message","id":"a1","message":{"role":"assistant","content":[{"type":"text","text":"real assistant text"}]}}

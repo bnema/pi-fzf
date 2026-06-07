@@ -1,12 +1,30 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { main } from "../src/cli.js";
 
 const temps: string[] = [];
-afterEach(async () => { vi.restoreAllMocks(); for (const dir of temps.splice(0)) await rm(dir, { recursive: true, force: true }); });
+let previousCacheDir: string | undefined;
+let previousSessionRoot: string | undefined;
+
+beforeEach(() => {
+  previousCacheDir = process.env.PI_FZF_CACHE_DIR;
+  previousSessionRoot = process.env.PI_FZF_SESSION_ROOT;
+});
+
+function restoreEnv(name: "PI_FZF_CACHE_DIR" | "PI_FZF_SESSION_ROOT", value: string | undefined) {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
+
+afterEach(async () => {
+  vi.restoreAllMocks();
+  restoreEnv("PI_FZF_CACHE_DIR", previousCacheDir);
+  restoreEnv("PI_FZF_SESSION_ROOT", previousSessionRoot);
+  for (const dir of temps.splice(0)) await rm(dir, { recursive: true, force: true });
+});
 
 async function roots() {
   const dir = await mkdtemp(join(tmpdir(), "pi-fzf-cli-test-")); temps.push(dir);
@@ -36,7 +54,6 @@ describe("cli", () => {
     await capture(() => main(["index"]));
     const out = await capture(() => main(["search", "find", "--no-fzf", "--print-session-id"]));
     expect(out).toContain("cli-session");
-    delete process.env.PI_FZF_CACHE_DIR; delete process.env.PI_FZF_SESSION_ROOT;
   });
 
   it("prints preview for a selected key", async () => {
@@ -48,6 +65,5 @@ describe("cli", () => {
     const key = candidates.split("\t")[0]!;
     const preview = await capture(() => main(["preview", "--key", key]));
     expect(preview).toContain("session id: cli-session");
-    delete process.env.PI_FZF_CACHE_DIR; delete process.env.PI_FZF_SESSION_ROOT;
   });
 });
