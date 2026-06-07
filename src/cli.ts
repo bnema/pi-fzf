@@ -32,13 +32,13 @@ export async function main(args: string[] = process.argv.slice(2)): Promise<void
   if (cmd === "doctor") { console.log(JSON.stringify(await doctorCache(), null, 2)); return; }
   if (cmd === "stats") { console.log(JSON.stringify(await getCacheStats(), null, 2)); return; }
   if (cmd === "candidates") { console.log((await rgCandidateLines(opts)).join("\n")); return; }
-  if (cmd === "preview") { await printPreview(required(opts.key, "--key"), opts); return; }
+  if (cmd === "preview") { await printPreview(opts.key, opts); return; }
   if (cmd === "copy") { await copyKey(required(opts.key, "--key")); return; }
 
   await syncCache();
   if (opts.noFzf) { await printSearch(opts); return; }
   const lines = await candidateLines(opts);
-  const fzfOptions: Parameters<typeof runFzf>[0] = { candidates: lines };
+  const fzfOptions: Parameters<typeof runFzf>[0] = { candidates: lines, dynamicRg: true };
   if (opts.query !== undefined) fzfOptions.query = opts.query;
   const version = await detectFzfVersion();
   if (version !== undefined) fzfOptions.version = version;
@@ -62,7 +62,8 @@ async function printSearch(opts: CliOptions) {
   }
 }
 
-async function printPreview(key: string, opts: CliOptions = {}) {
+async function printPreview(key: string | undefined, opts: CliOptions = {}) {
+  if (!key || key.startsWith("--")) return;
   const p = await previewRecord(key, 12, opts);
   if (!p) { process.exitCode = 1; return; }
   console.log(p.metadata.join("\n"));
