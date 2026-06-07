@@ -105,7 +105,7 @@ export async function rgCandidateLines(options: SearchOptions = {}): Promise<str
 }
 
 function rgArgsForQuery(query: string, options: SearchOptions, recordsDir: string): string[] {
-  const args = ["--json", "--smart-case", "--glob=*.jsonl"];
+  const args = ["--json", "--ignore-case", "--glob=*.jsonl"];
   if (options.matchMode !== "regex") args.push("--fixed-strings");
   const patterns = options.matchMode === "regex" || (options.tokenMode ?? "and") === "and" ? [query] : tokenize(query);
   for (const pattern of patterns) args.push("-e", pattern);
@@ -246,7 +246,7 @@ function matchesQuery(r: CandidateRecord, query: string, o: SearchOptions): bool
     try { return new RegExp(query, smartCaseFlags(query)).test(hay); } catch { return false; }
   }
   const tokens = tokenize(query);
-  const checks = tokens.map((t) => contains(hay, t, o.matchMode === "fixed" ? false : /[A-Z]/.test(t)));
+  const checks = tokens.map((t) => contains(hay, t, false));
   return (o.tokenMode ?? "and") === "or" ? checks.some(Boolean) : checks.every(Boolean);
 }
 

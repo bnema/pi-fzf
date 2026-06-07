@@ -57,6 +57,13 @@ describe("search", () => {
     expect(await rgCandidateLines({ cacheRoot, query: "alpha beta", role: "assistant" })).toHaveLength(0);
   });
 
+  it("matches plain queries case-insensitively before fzf", async () => {
+    const { cacheRoot } = await fixture();
+
+    expect(await searchRecords({ cacheRoot, query: "ALPHA" })).toHaveLength(1);
+    expect(await rgCandidateLines({ cacheRoot, query: "ALPHA" })).toHaveLength(1);
+  });
+
   it("keeps rg OR searches equivalent to full candidate scanning", async () => {
     const { cacheRoot } = await fixture();
     const options = { cacheRoot, query: "alpha omega", tokenMode: "or" as const };
