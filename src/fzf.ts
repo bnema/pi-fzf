@@ -87,7 +87,7 @@ export function buildFzfArgs(options: FzfRunOptions): string[] {
     "--exact",
     "--ignore-case",
     "--no-sort",
-    `--preview=if [ -n {1} ]; then ${piFzfCommand} preview --key {1} --query {q}; fi`,
+    `--preview=${piFzfCommand} preview --key {1} --query {q}`,
   ];
 
   if (supportsAcceptNth(options.version)) {

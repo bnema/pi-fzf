@@ -82,9 +82,10 @@ function parseOptions(args: string[]): CliOptions {
     if (a === "--json") o.json = true; else if (a === "--print-session-id") o.printSessionId = true;
     else if (a === "--print-session-path") o.printSessionPath = true; else if (a === "--print-snippet") o.printSnippet = true;
     else if (a === "--no-fzf") o.noFzf = true; else if (a === "--rebuild") o.rebuild = true;
-    else if (a === "--query") o.query = args[++i] ?? ""; else if (a === "--key") { const v = args[++i]; if (v !== undefined) o.key = v; }
-    else if (a === "--role") { const v = args[++i]; if (v !== undefined) o.role = v as any; } else if (a === "--project") { const v = args[++i]; if (v !== undefined) o.project = v; }
-    else if (a === "--cwd") { const v = args[++i]; if (v !== undefined) o.cwd = v; } else if (a === "--since") { const v = args[++i]; if (v !== undefined) o.since = v; } else if (a === "--before") { const v = args[++i]; if (v !== undefined) o.before = v; }
+    else if (a === "--query") { const next = readOptionValue(args, i); if (next !== undefined) { o.query = next.value; i = next.index; } else o.query = ""; }
+    else if (a === "--key") { const next = readOptionValue(args, i); if (next !== undefined) { o.key = next.value; i = next.index; } }
+    else if (a === "--role") { const next = readOptionValue(args, i); if (next !== undefined) { o.role = next.value as any; i = next.index; } } else if (a === "--project") { const next = readOptionValue(args, i); if (next !== undefined) { o.project = next.value; i = next.index; } }
+    else if (a === "--cwd") { const next = readOptionValue(args, i); if (next !== undefined) { o.cwd = next.value; i = next.index; } } else if (a === "--since") { const next = readOptionValue(args, i); if (next !== undefined) { o.since = next.value; i = next.index; } } else if (a === "--before") { const next = readOptionValue(args, i); if (next !== undefined) { o.before = next.value; i = next.index; } }
     else if (a === "--named-only") o.namedOnly = true; else if (a === "--limit") o.limit = Number(args[++i]);
     else if (a === "--or") o.tokenMode = "or"; else if (a === "--regex") o.matchMode = "regex"; else if (a === "--fixed") o.matchMode = "fixed";
     else terms.push(a);
@@ -92,6 +93,12 @@ function parseOptions(args: string[]): CliOptions {
   if (o.query === undefined && terms.length) o.query = terms.join(" ");
   return o;
 }
+function readOptionValue(args: string[], index: number): { value: string; index: number } | undefined {
+  const value = args[index + 1];
+  if (value === undefined || value.startsWith("--")) return undefined;
+  return { value, index: index + 1 };
+}
+
 function actionFromOptions(o: CliOptions): SelectedAction { if (o.json) return "json"; if (o.printSessionId) return "print-session-id"; if (o.printSessionPath) return "print-session-path"; if (o.printSnippet) return "print-snippet"; return (process.env.PI_FZF_ACTION as SelectedAction | undefined) ?? "menu"; }
 function required(v: string | undefined, name: string): string { if (!v) throw new Error(`${name} is required`); return v; }
 function installPipeErrorHandler(): void {

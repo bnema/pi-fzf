@@ -66,4 +66,10 @@ describe("cli", () => {
     const preview = await capture(() => main(["preview", "--key", key]));
     expect(preview).toContain("session id: cli-session");
   });
+
+  it("ignores preview calls with an empty fzf key", async () => {
+    const out = await capture(() => main(["preview", "--key", "--query", "find"]));
+
+    expect(out).toBe("");
+  });
 });
