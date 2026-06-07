@@ -88,6 +88,7 @@ export function buildFzfArgs(options: FzfRunOptions): string[] {
     "--ignore-case",
     "--no-sort",
     `--preview=${piFzfCommand} preview --key {1} --query {q}`,
+    "--preview-window=right:70%,wrap",
   ];
 
   if (supportsAcceptNth(options.version)) {

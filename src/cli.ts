@@ -46,7 +46,9 @@ export async function main(args: string[] = process.argv.slice(2)): Promise<void
   if (!selected) return;
   const record = await findRecordByKey(parseRecordKey(selected));
   if (!record) { process.exitCode = 1; return; }
-  await runSelectedAction(record, actionFromOptions(opts));
+  const actionOptions: { exec?: boolean } = {};
+  if (opts.exec === true) actionOptions.exec = true;
+  await runSelectedAction(record, actionFromOptions(opts), actionOptions);
 }
 
 async function printSearch(opts: CliOptions) {
@@ -68,12 +70,12 @@ async function printPreview(key: string | undefined, opts: CliOptions = {}) {
   if (!p) { process.exitCode = 1; return; }
   console.log(p.metadata.join("\n"));
   console.log(`${opts.query ? "matches with context" : "messages"}:`);
-  console.log(p.records.map((record) => `[${record.role}] ${highlightForQuery(record.text, opts.query, opts)}`).join("\n"));
+  console.log(p.records.map((record) => `${coloredRole(record.role)} ${highlightForQuery(record.text, opts.query, opts)}`).join("\n"));
 }
 async function copyKey(key: string) { const r = await findRecordByKey(key); if (!r) { process.exitCode = 1; return; } await runSelectedAction(r, "copy"); }
 
 type Command = "default" | "search" | "index" | "clean" | "doctor" | "stats" | "candidates" | "preview" | "copy";
-interface CliOptions extends SearchOptions { json?: boolean; printSessionId?: boolean; printSessionPath?: boolean; printSnippet?: boolean; noFzf?: boolean; rebuild?: boolean; key?: string }
+interface CliOptions extends SearchOptions { json?: boolean; printSessionId?: boolean; printSessionPath?: boolean; printSnippet?: boolean; noFzf?: boolean; rebuild?: boolean; key?: string; exec?: boolean }
 function command(args: string[]): Command { return ["search","index","clean","doctor","stats","candidates","preview","copy"].includes(args[0] ?? "") ? args[0] as Command : "default"; }
 function parseOptions(args: string[]): CliOptions {
   const o: CliOptions = {}; const terms: string[] = [];
@@ -81,7 +83,7 @@ function parseOptions(args: string[]): CliOptions {
     const a = args[i]!;
     if (a === "--json") o.json = true; else if (a === "--print-session-id") o.printSessionId = true;
     else if (a === "--print-session-path") o.printSessionPath = true; else if (a === "--print-snippet") o.printSnippet = true;
-    else if (a === "--no-fzf") o.noFzf = true; else if (a === "--rebuild") o.rebuild = true;
+    else if (a === "--no-fzf") o.noFzf = true; else if (a === "--rebuild") o.rebuild = true; else if (a === "--exec") o.exec = true;
     else if (a === "--query") { const next = readOptionValue(args, i); if (next !== undefined) { o.query = next.value; i = next.index; } else o.query = ""; }
     else if (a === "--key") { const next = readOptionValue(args, i); if (next !== undefined) { o.key = next.value; i = next.index; } }
     else if (a === "--role") { const next = readOptionValue(args, i); if (next !== undefined) { o.role = next.value as any; i = next.index; } } else if (a === "--project") { const next = readOptionValue(args, i); if (next !== undefined) { o.project = next.value; i = next.index; } }
@@ -99,7 +101,24 @@ function readOptionValue(args: string[], index: number): { value: string; index:
   return { value, index: index + 1 };
 }
 
-function actionFromOptions(o: CliOptions): SelectedAction { if (o.json) return "json"; if (o.printSessionId) return "print-session-id"; if (o.printSessionPath) return "print-session-path"; if (o.printSnippet) return "print-snippet"; return (process.env.PI_FZF_ACTION as SelectedAction | undefined) ?? "menu"; }
+function coloredRole(role: string): string {
+  const color = role === "user" ? "\u001b[36;1m" : role === "assistant" ? "\u001b[32;1m" : role === "compaction" ? "\u001b[35;1m" : "\u001b[33;1m";
+  return `${color}[${role}]\u001b[0m`;
+}
+
+function actionFromOptions(o: CliOptions): SelectedAction {
+  if (o.json) return "json";
+  if (o.printSessionId) return "print-session-id";
+  if (o.printSessionPath) return "print-session-path";
+  if (o.printSnippet) return "print-snippet";
+  const enter = process.env.PI_FZF_ENTER;
+  if (enter === "exec") { o.exec = true; return "resume"; }
+  if (enter === "path") return "print-session-path";
+  if (enter === "id") return "print-session-id";
+  if (enter === "json") return "json";
+  if (process.env.PI_FZF_ACTION) return process.env.PI_FZF_ACTION as SelectedAction;
+  return "resume";
+}
 function required(v: string | undefined, name: string): string { if (!v) throw new Error(`${name} is required`); return v; }
 function installPipeErrorHandler(): void {
   if (pipeErrorHandlerInstalled) return;

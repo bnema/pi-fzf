@@ -274,7 +274,7 @@ function toSessionCandidateLine(records: CandidateRecord[], options: SearchOptio
   const sorted = sortByRecency(records);
   const bestRecord = sorted[0]!;
   const label = bestRecord.sessionName ?? projectFromCwd(bestRecord.cwd) ?? bestRecord.sessionId.slice(0, 8);
-  const date = bestRecord.timestamp?.slice(0, 10);
+  const date = dateLabel(bestRecord.timestamp);
   const matchLabel = records.length === 1 ? "1 match" : `${records.length} matches`;
   const snippet = highlightForQuery(visibleExcerpt(bestRecord.text, options.query, options), options.query, options);
   return {
@@ -352,6 +352,43 @@ function timestampMs(timestamp: string | undefined): number {
   if (!timestamp) return Number.NEGATIVE_INFINITY;
   const parsed = Date.parse(timestamp);
   return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+}
+
+function dateLabel(timestamp: string | undefined): string | undefined {
+  const relative = relativeDateLabel(timestamp);
+  const absolute = absoluteDateLabel(timestamp);
+  if (relative && absolute) return `${relative} (${absolute})`;
+  return relative ?? absolute;
+}
+
+function absoluteDateLabel(timestamp: string | undefined): string | undefined {
+  if (!timestamp) return undefined;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return timestamp.slice(0, 19);
+  return date.toISOString().replace("T", " ").slice(0, 19);
+}
+
+function relativeDateLabel(timestamp: string | undefined): string | undefined {
+  const ms = timestampMs(timestamp);
+  if (!Number.isFinite(ms)) return timestamp?.slice(0, 10);
+  const diffMs = ms - Date.now();
+  const absMs = Math.abs(diffMs);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const month = 30 * day;
+  const year = 365 * day;
+  const format = (value: number, unit: string) => {
+    const rounded = Math.round(value);
+    const suffix = Math.abs(rounded) === 1 ? unit : `${unit}s`;
+    return rounded < 0 ? `${Math.abs(rounded)} ${suffix} ago` : `in ${rounded} ${suffix}`;
+  };
+  if (absMs < minute) return "just now";
+  if (absMs < hour) return format(diffMs / minute, "minute");
+  if (absMs < day) return format(diffMs / hour, "hour");
+  if (absMs < month) return format(diffMs / day, "day");
+  if (absMs < year) return format(diffMs / month, "month");
+  return format(diffMs / year, "year");
 }
 
 function contains(hay: string, needle: string, caseSensitive: boolean): boolean {

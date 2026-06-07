@@ -58,6 +58,7 @@ describe("buildFzfArgs", () => {
     expect(args).toContain("--id-nth=1");
     expect(args).toContain("--track");
     expect(args).toContain("--preview=pi-fzf preview --key {1} --query {q}");
+    expect(args).toContain("--preview-window=right:70%,wrap");
   });
 
   it("omits accept-nth and id tracking flags when unsupported", () => {
