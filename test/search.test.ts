@@ -56,4 +56,43 @@ describe("search", () => {
     expect(lines[0]).toContain("alpha beta");
     expect(await rgCandidateLines({ cacheRoot, query: "alpha beta", role: "assistant" })).toHaveLength(0);
   });
+
+  it("keeps rg OR searches equivalent to full candidate scanning", async () => {
+    const { cacheRoot } = await fixture();
+    const options = { cacheRoot, query: "alpha omega", tokenMode: "or" as const };
+    const scannedKeys = (await candidateLines(options)).map((line) => line.split("\t", 1)[0]);
+    const rgKeys = (await rgCandidateLines(options)).map((line) => line.split("\t", 1)[0]);
+    expect(rgKeys).toEqual(scannedKeys);
+  });
+
+  it("handles large rg shards with low limits", async () => {
+    const { cacheRoot } = await fixture();
+    const recordsDir = join(cacheRoot, "records");
+    const many = Array.from({ length: 200 }, (_, i) => ({
+      cacheVersion: 1,
+      extractorVersion: 1,
+      sourceKey: "manual-large",
+      sessionId: "large",
+      sessionPath: "/tmp/large.jsonl",
+      role: "user",
+      text: `needle ${i}`,
+      sequence: i,
+      chunkIndex: 0,
+      display: `large — user — needle ${i}`,
+      searchText: `needle ${i}`,
+    }));
+    await writeFile(join(recordsDir, "manual-large.jsonl"), many.map((record) => JSON.stringify(record)).join("\n") + "\n");
+
+    const lines = await rgCandidateLines({ cacheRoot, query: "needle", limit: 3 });
+    expect(lines).toHaveLength(3);
+    expect(lines.every((line) => line.includes("needle"))).toBe(true);
+  });
+
+  it("builds preview from the selected record source shard", async () => {
+    const { cacheRoot } = await fixture();
+    const selected = (await searchRecords({ cacheRoot, query: "omega" }))[0]!;
+    const preview = await previewRecord(recordKey(selected), 1, { cacheRoot, query: "alpha" });
+    expect(preview?.record.text).toBe("omega");
+    expect(preview?.neighbors).toHaveLength(0);
+  });
 });

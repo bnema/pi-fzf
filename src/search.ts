@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { spawn } from "node:child_process";
@@ -47,21 +47,27 @@ export async function candidateLines(options: SearchOptions = {}): Promise<strin
 }
 
 export async function findRecordByKey(key: string, options: SearchOptions = {}): Promise<CandidateRecord | undefined> {
-  for await (const record of readAllRecords(options)) if (recordKey(record) === key) return record;
+  const parsed = parseRecordKey(key);
+  const keyParts = parseKeyParts(parsed);
+  if (keyParts) {
+    const records = await readSourceRecords(keyParts.sourceKey, options);
+    for (const record of records) if (recordKey(record) === parsed) return record;
+    return undefined;
+  }
+  for await (const record of readAllRecords(options)) if (recordKey(record) === parsed) return record;
   return undefined;
 }
 
 export async function previewRecord(key: string, contextLines = 2, options: SearchOptions = {}): Promise<Preview | undefined> {
   const parsed = parseRecordKey(key);
-  const found = await findRecordByKey(parsed, options);
+  const keyParts = parseKeyParts(parsed);
+  const same = keyParts ? await readSourceRecords(keyParts.sourceKey, options) : [];
+  const found = same.find((r) => recordKey(r) === parsed) ?? await findRecordByKey(parsed, options);
   if (!found) return undefined;
-  const searchOptions: SearchOptions = { ...options, limit: Number.MAX_SAFE_INTEGER };
-  delete searchOptions.query;
-  const same = (await searchRecords(searchOptions))
-    .filter((r) => r.sourceKey === found.sourceKey)
-    .sort((a, b) => a.sequence - b.sequence || a.chunkIndex - b.chunkIndex);
-  const idx = same.findIndex((r) => recordKey(r) === recordKey(found));
-  const neighbors = idx < 0 ? [] : same.slice(Math.max(0, idx - contextLines), idx).concat(same.slice(idx + 1, idx + 1 + contextLines));
+  const sourceRecords = same.length ? same : await readSourceRecords(found.sourceKey, options);
+  const sorted = sourceRecords.sort((a, b) => a.sequence - b.sequence || a.chunkIndex - b.chunkIndex);
+  const idx = sorted.findIndex((r) => recordKey(r) === recordKey(found));
+  const neighbors = idx < 0 ? [] : sorted.slice(Math.max(0, idx - contextLines), idx).concat(sorted.slice(idx + 1, idx + 1 + contextLines));
   const metadata = [
     `project: ${found.sessionName ?? ""}`,
     `cwd: ${found.cwd ?? ""}`,
@@ -77,56 +83,101 @@ export async function rgCandidateLines(options: SearchOptions = {}): Promise<str
   const query = options.query?.trim();
   if (!query) return candidateLines(options);
   const cacheRoot = options.cacheRoot ?? resolveCacheRoot(options);
-  const token = tokenize(query)[0] ?? query;
-  const args = ["--json", "--smart-case", "--glob=*.jsonl"];
-  if (options.matchMode !== "regex") args.push("--fixed-strings");
-  args.push(token, join(cacheRoot, "records"));
-  const matches = await rgMatchingLines("rg", args);
-  if (!matches) return candidateLines(options);
+  const args = rgArgsForQuery(query, options, join(cacheRoot, "records"));
+  const matchesByPath = await rgMatchingLines("rg", args);
+  if (!matchesByPath) return candidateLines(options);
   const out: CandidateRecord[] = [];
   const seen = new Set<string>();
-  for (const match of matches) {
+  for (const [path, lineNumbers] of [...matchesByPath.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     if (out.length >= (options.limit ?? DEFAULT_LIMIT)) break;
-    const record = await readRecordAtLine(match.path, match.lineNumber);
-    if (!record) continue;
-    const key = recordKey(record);
-    if (seen.has(key) || !passesFilters(record, options) || !matchesQuery(record, query, options)) continue;
-    seen.add(key);
-    out.push(record);
+    for (const record of await readRecordsAtLines(path, lineNumbers)) {
+      if (out.length >= (options.limit ?? DEFAULT_LIMIT)) break;
+      const key = recordKey(record);
+      if (seen.has(key) || !passesFilters(record, options) || !matchesQuery(record, query, options)) continue;
+      seen.add(key);
+      out.push(record);
+    }
   }
   return out.map(toCandidateLine);
 }
 
-async function rgMatchingLines(command: string, args: string[]): Promise<Array<{ path: string; lineNumber: number }> | undefined> {
+function rgArgsForQuery(query: string, options: SearchOptions, recordsDir: string): string[] {
+  const args = ["--json", "--smart-case", "--glob=*.jsonl"];
+  if (options.matchMode !== "regex") args.push("--fixed-strings");
+  const patterns = options.matchMode === "regex" || (options.tokenMode ?? "and") === "and" ? [query] : tokenize(query);
+  for (const pattern of patterns) args.push("-e", pattern);
+  args.push(recordsDir);
+  return args;
+}
+
+async function rgMatchingLines(command: string, args: string[]): Promise<Map<string, Set<number>> | undefined> {
   return new Promise((resolve) => {
-    const matches: Array<{ path: string; lineNumber: number }> = [];
+    const matches = new Map<string, Set<number>>();
     const child = spawn(command, args, { shell: false, stdio: ["ignore", "pipe", "ignore"] });
-    let stdout = "";
+    let buffer = "";
+    let settled = false;
+    const fail = () => { if (!settled) { settled = true; resolve(undefined); } };
     child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.on("error", () => resolve(undefined));
-    child.on("close", (code) => {
-      if (code !== 0 && code !== 1) { resolve(undefined); return; }
-      for (const line of stdout.split("\n")) {
-        if (!line) continue;
-        try {
-          const event = JSON.parse(line);
-          if (event.type !== "match") continue;
-          const path = event.data?.path?.text;
-          const lineNumber = event.data?.line_number;
-          if (typeof path === "string" && Number.isInteger(lineNumber)) matches.push({ path, lineNumber });
-        } catch { resolve(undefined); return; }
+    child.stdout.on("data", (chunk) => {
+      buffer += chunk;
+      let newline = buffer.indexOf("\n");
+      while (newline >= 0) {
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 1);
+        if (line && !collectRgMatch(line, matches)) { child.kill(); fail(); return; }
+        newline = buffer.indexOf("\n");
       }
+    });
+    child.on("error", fail);
+    child.on("close", (code) => {
+      if (settled) return;
+      if (code !== 0 && code !== 1) { fail(); return; }
+      if (buffer && !collectRgMatch(buffer, matches)) { fail(); return; }
+      settled = true;
       resolve(matches);
     });
   });
 }
 
-async function readRecordAtLine(path: string, lineNumber: number): Promise<CandidateRecord | undefined> {
+function collectRgMatch(line: string, matches: Map<string, Set<number>>): boolean {
   try {
-    const line = (await readFile(path, "utf8")).split("\n")[lineNumber - 1];
-    return line ? JSON.parse(line) as CandidateRecord : undefined;
-  } catch { return undefined; }
+    const event = JSON.parse(line);
+    if (event.type !== "match") return true;
+    const path = event.data?.path?.text;
+    const lineNumber = event.data?.line_number;
+    if (typeof path === "string" && Number.isInteger(lineNumber)) {
+      const lines = matches.get(path) ?? new Set<number>();
+      lines.add(lineNumber);
+      matches.set(path, lines);
+    }
+    return true;
+  } catch { return false; }
+}
+
+async function readRecordsAtLines(path: string, lineNumbers: Set<number>): Promise<CandidateRecord[]> {
+  const out: CandidateRecord[] = [];
+  const wanted = new Set([...lineNumbers].sort((a, b) => a - b));
+  let lineNumber = 0;
+  try {
+    for await (const line of readJsonlLines(path)) {
+      lineNumber++;
+      if (!wanted.has(lineNumber)) continue;
+      try { out.push(JSON.parse(line) as CandidateRecord); } catch {}
+      if (out.length >= lineNumbers.size) break;
+    }
+  } catch { return []; }
+  return out;
+}
+
+async function readSourceRecords(sourceKey: string, options: SearchOptions): Promise<CandidateRecord[]> {
+  const path = join(options.cacheRoot ?? resolveCacheRoot(options), "records", `${sourceKey}.jsonl`);
+  const records: CandidateRecord[] = [];
+  try {
+    for await (const line of readJsonlLines(path)) {
+      try { records.push(JSON.parse(line) as CandidateRecord); } catch {}
+    }
+  } catch { return []; }
+  return records;
 }
 
 async function* readAllRecords(options: SearchOptions): AsyncGenerator<CandidateRecord> {
@@ -134,12 +185,24 @@ async function* readAllRecords(options: SearchOptions): AsyncGenerator<Candidate
   let files: string[] = [];
   try { files = (await readdir(dir)).filter((f) => f.endsWith(".jsonl")).sort(); } catch { return; }
   for (const file of files) {
-    const rl = createInterface({ input: createReadStream(join(dir, file), { encoding: "utf8" }), crlfDelay: Infinity });
-    for await (const line of rl) {
-      if (!line.trim()) continue;
+    for await (const line of readJsonlLines(join(dir, file))) {
       try { yield JSON.parse(line) as CandidateRecord; } catch {}
     }
   }
+}
+
+async function* readJsonlLines(path: string): AsyncGenerator<string> {
+  const rl = createInterface({ input: createReadStream(path, { encoding: "utf8" }), crlfDelay: Infinity });
+  for await (const line of rl) if (line.trim()) yield line;
+}
+
+function parseKeyParts(key: string): { sourceKey: string; sequence: number; chunkIndex: number } | undefined {
+  const [sourceKey, sequence, chunkIndex] = key.split(":");
+  if (!sourceKey || sequence === undefined || chunkIndex === undefined) return undefined;
+  const sequenceNumber = Number(sequence);
+  const chunkIndexNumber = Number(chunkIndex);
+  if (!Number.isInteger(sequenceNumber) || !Number.isInteger(chunkIndexNumber)) return undefined;
+  return { sourceKey, sequence: sequenceNumber, chunkIndex: chunkIndexNumber };
 }
 
 function passesFilters(r: CandidateRecord, o: SearchOptions): boolean {
