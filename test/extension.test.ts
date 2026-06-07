@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseFzfArgs, sessionResults } from "../extensions/index.js";
+import { PiFzfPicker, parseFzfArgs, sessionResults } from "../extensions/index.js";
 import type { CandidateRecord } from "../src/records.js";
 
 function record(overrides: Partial<CandidateRecord>): CandidateRecord {
@@ -16,6 +16,7 @@ function record(overrides: Partial<CandidateRecord>): CandidateRecord {
     chunkIndex: 0,
     display: "",
     searchText: "",
+    timestamp: "2024-01-01T00:00:00Z",
     ...overrides,
   };
 }
@@ -47,5 +48,29 @@ describe("pi extension /fzf", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0]?.sessionId).toBe("a");
+  });
+
+  it("renders the custom picker with a frame and preview", () => {
+    const picker = new PiFzfPicker([
+      record({ sourceKey: "source-a", sessionId: "a", sessionName: "alpha", text: "first preview text", searchText: "first preview text", timestamp: "2024-01-01T00:00:00Z" }),
+    ], "", { matches: () => false }, () => {}, () => {}, { fg: (_color, text) => text, bg: (_color, text) => text });
+
+    const lines = picker.render(80);
+
+    expect(lines[0]).toMatch(/^╭─ \/fzf/);
+    expect(lines).toContainEqual(expect.stringMatching(/^│ preview\s+│$/));
+    expect(lines.some((line) => line.includes("first preview text"))).toBe(true);
+    expect(lines.at(-1)).toMatch(/^╰/);
+  });
+
+  it("lets printable j and k characters update the query", () => {
+    const picker = new PiFzfPicker([
+      record({ sourceKey: "source-a", sessionId: "a", text: "json keyword", searchText: "json keyword" }),
+    ], "", { matches: () => false }, () => {}, () => {}, { fg: (_color, text) => text, bg: (_color, text) => text });
+
+    picker.handleInput("j");
+    picker.handleInput("k");
+
+    expect(picker.render(80).some((line) => line.includes("query: jk"))).toBe(true);
   });
 });

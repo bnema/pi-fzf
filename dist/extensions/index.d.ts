@@ -32,7 +32,12 @@ export declare class PiFzfPicker {
     private move;
     private clampSelection;
     private ensureVisible;
-    private line;
+    private frame;
+    private rule;
+    private padLine;
+    private resultLine;
+    private previewLines;
+    private truncatePlain;
     private dim;
     private accent;
     private selectedStyle;
