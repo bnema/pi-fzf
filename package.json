@@ -1,9 +1,15 @@
 {
   "name": "pi-fzf",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "type": "module",
   "description": "Fast fzf-powered search for previous Pi coding-agent sessions.",
-  "keywords": ["pi-package", "fzf", "pi", "sessions", "session-search"],
+  "keywords": [
+    "pi-package",
+    "fzf",
+    "pi",
+    "sessions",
+    "session-search"
+  ],
   "homepage": "https://github.com/bnema/pi-fzf#readme",
   "repository": {
     "type": "git",
@@ -35,7 +41,9 @@
     "prepack": "npm run build"
   },
   "pi": {
-    "extensions": ["./extensions/index.ts"]
+    "extensions": [
+      "./extensions/index.ts"
+    ]
   },
   "dependencies": {},
   "devDependencies": {

@@ -27,7 +27,7 @@ pi-fzf "thing I remember"
 If your npm setup still has trouble with GitHub shorthand installs, install the release tarball instead:
 
 ```sh
-npm install -g https://github.com/bnema/pi-fzf/archive/refs/tags/v0.1.2.tar.gz
+npm install -g https://github.com/bnema/pi-fzf/archive/refs/tags/v0.2.0.tar.gz
 ```
 
 Optional wrapper alias:
