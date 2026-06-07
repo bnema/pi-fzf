@@ -1,0 +1,33 @@
+{
+  "name": "pi-fzf",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "keywords": ["pi-package", "fzf", "pi", "sessions"],
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "pi-fzf": "./bin/pi-fzf.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepack": "npm run build"
+  },
+  "pi": {
+    "extensions": ["./extensions/index.ts"]
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  }
+}
