@@ -102,11 +102,13 @@ Search options:
 
 Output/action options:
 
-- Default interactive CLI search opens `fzf` and prints the selected snippet.
+- Default interactive CLI search opens `fzf`. Pressing Enter prints a ready-to-run command for the selected session: `cd <cwd> && pi --session <session-path>`.
+- Set `PI_FZF_ENTER=exec` to launch that Pi session directly on Enter.
+- Set `PI_FZF_ENTER=path`, `PI_FZF_ENTER=id`, or `PI_FZF_ENTER=json` to change Enter output.
 - `--no-fzf` prints candidates directly and is useful in scripts or CI.
 - `--print-session-path`, `--print-session-id`, `--print-snippet`, and `--json` change non-interactive output and selected-result actions.
-- `candidates --query <query>` prints candidate lines for `fzf` reload hooks.
-- `preview --key <key>` prints metadata, the selected snippet, and nearby context for an indexed record.
+- `candidates --query <query>` prints session candidate lines for `fzf` reload hooks.
+- `preview --key <key>` prints session metadata and conversation history, or matching excerpts with context when `--query` is provided.
 
 ## Pi slash command
 
