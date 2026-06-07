@@ -1,6 +1,6 @@
 {
   "name": "pi-fzf",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Fast fzf-powered search for previous Pi coding-agent sessions.",
   "keywords": ["pi-package", "fzf", "pi", "sessions", "session-search"],

@@ -20,8 +20,14 @@ There are two separate ways to use `pi-fzf`:
 From the public GitHub repository:
 
 ```sh
-npm install -g github:bnema/pi-fzf
+npm install -g github:bnema/pi-fzf --install-links=true
 pi-fzf "thing I remember"
+```
+
+If your npm setup still has trouble with GitHub shorthand installs, install the release tarball instead:
+
+```sh
+npm install -g https://github.com/bnema/pi-fzf/archive/refs/tags/v0.1.2.tar.gz
 ```
 
 Optional wrapper alias:
