@@ -81,11 +81,13 @@ export function supportsIdNth(version: FzfVersion | undefined): boolean {
 export function buildFzfArgs(options: FzfRunOptions): string[] {
   const piFzfCommand = shellQuote(options.fzfCommand ?? process.env.PI_FZF_COMMAND ?? "pi-fzf");
   const args = [
+    "--ansi",
     "--delimiter=\t",
     "--with-nth=2",
     "--exact",
     "--ignore-case",
-    `--preview=${piFzfCommand} preview --key {1} --query {q}`,
+    "--no-sort",
+    `--preview=if [ -n {1} ]; then ${piFzfCommand} preview --key {1} --query {q}; fi`,
   ];
 
   if (supportsAcceptNth(options.version)) {
@@ -104,8 +106,7 @@ export function buildFzfArgs(options: FzfRunOptions): string[] {
     const reloadCandidates = `${piFzfCommand} candidates --query {q} || true`;
     args.push(
       "--disabled",
-      "--prompt=rg>",
-      `--bind=start:reload:${reloadCandidates}`,
+      "--prompt=pi> ",
       `--bind=change:reload:${reloadCandidates}`,
       "--bind=ctrl-f:unbind(change)+change-prompt(fzf> )+enable-search",
     );

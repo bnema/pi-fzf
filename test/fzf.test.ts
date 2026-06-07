@@ -47,15 +47,17 @@ describe("buildFzfArgs", () => {
   it("builds field-aware args with preview and supported identity flags", () => {
     const args = buildFzfArgs({ version: version("0.72.0") });
 
+    expect(args).toContain("--ansi");
     expect(args).toContain("--delimiter=\t");
     expect(args).toContain("--with-nth=2");
     expect(args).not.toContain("--nth=2,3");
     expect(args).toContain("--exact");
     expect(args).toContain("--ignore-case");
+    expect(args).toContain("--no-sort");
     expect(args).toContain("--accept-nth=1");
     expect(args).toContain("--id-nth=1");
     expect(args).toContain("--track");
-    expect(args).toContain("--preview=pi-fzf preview --key {1} --query {q}");
+    expect(args).toContain("--preview=if [ -n {1} ]; then pi-fzf preview --key {1} --query {q}; fi");
   });
 
   it("omits accept-nth and id tracking flags when unsupported", () => {
@@ -70,8 +72,8 @@ describe("buildFzfArgs", () => {
     const args = buildFzfArgs({ version: version("0.73.1"), dynamicRg: true });
 
     expect(args).toContain("--disabled");
-    expect(args).toContain("--prompt=rg>");
-    expect(args).toContain("--bind=start:reload:pi-fzf candidates --query {q} || true");
+    expect(args).toContain("--prompt=pi> ");
+    expect(args).not.toContain("--bind=start:reload:pi-fzf candidates --query {q} || true");
     expect(args).toContain("--bind=change:reload:pi-fzf candidates --query {q} || true");
     expect(args).toContain("--bind=ctrl-f:unbind(change)+change-prompt(fzf> )+enable-search");
   });
@@ -79,7 +81,7 @@ describe("buildFzfArgs", () => {
   it("uses a configurable pi-fzf command for previews and reloads", () => {
     const args = buildFzfArgs({ version: version("0.73.1"), dynamicRg: true, fzfCommand: "/home/me/.local/bin/pi-fzf-search" });
 
-    expect(args).toContain("--preview=/home/me/.local/bin/pi-fzf-search preview --key {1} --query {q}");
-    expect(args).toContain("--bind=start:reload:/home/me/.local/bin/pi-fzf-search candidates --query {q} || true");
+    expect(args).toContain("--preview=if [ -n {1} ]; then /home/me/.local/bin/pi-fzf-search preview --key {1} --query {q}; fi");
+    expect(args).toContain("--bind=change:reload:/home/me/.local/bin/pi-fzf-search candidates --query {q} || true");
   });
 });

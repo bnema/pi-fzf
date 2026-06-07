@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { syncCache } from "../src/cache.js";
-import { candidateLines, findRecordByKey, previewRecord, rgCandidateLines, searchRecords } from "../src/search.js";
+import { candidateLines, findRecordByKey, highlightForQuery, previewRecord, rgCandidateLines, searchRecords } from "../src/search.js";
 import { recordKey } from "../src/records.js";
 
 const temps: string[] = [];
@@ -69,6 +69,18 @@ describe("search", () => {
 
     expect(await searchRecords({ cacheRoot, query: "ALPHA" })).toHaveLength(1);
     expect(await rgCandidateLines({ cacheRoot, query: "ALPHA" })).toHaveLength(1);
+  });
+
+  it("highlights query terms in visible candidate rows", async () => {
+    const { cacheRoot } = await fixture();
+    const [line] = await candidateLines({ cacheRoot, query: "alpha" });
+
+    expect(line).toContain("\u001b[33;1malpha\u001b[0m");
+    expect(line?.split("\t")).toHaveLength(2);
+  });
+
+  it("highlights plain query text", () => {
+    expect(highlightForQuery("worktree here", "worktree")).toBe("\u001b[33;1mworktree\u001b[0m here");
   });
 
   it("keeps rg OR searches equivalent to full candidate scanning", async () => {

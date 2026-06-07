@@ -37,7 +37,7 @@ export async function searchRecords(options: SearchOptions = {}): Promise<Candid
 }
 
 export async function candidateLines(options: SearchOptions = {}): Promise<string[]> {
-  return toSessionCandidateLines(await collectMatchingRecords(options), options.limit ?? DEFAULT_LIMIT);
+  return toSessionCandidateLines(await collectMatchingRecords(options), options.limit ?? DEFAULT_LIMIT, options);
 }
 
 async function collectMatchingRecords(options: SearchOptions = {}): Promise<CandidateRecord[]> {
@@ -106,7 +106,7 @@ export async function rgCandidateLines(options: SearchOptions = {}): Promise<str
       out.push(record);
     }
   }
-  return toSessionCandidateLines(out, options.limit ?? DEFAULT_LIMIT);
+  return toSessionCandidateLines(out, options.limit ?? DEFAULT_LIMIT, options);
 }
 
 function rgArgsForQuery(query: string, options: SearchOptions, recordsDir: string): string[] {
@@ -255,7 +255,7 @@ function matchesQuery(r: CandidateRecord, query: string, o: SearchOptions): bool
   return (o.tokenMode ?? "and") === "or" ? checks.some(Boolean) : checks.every(Boolean);
 }
 
-function toSessionCandidateLines(records: CandidateRecord[], limit: number): string[] {
+function toSessionCandidateLines(records: CandidateRecord[], limit: number, options: SearchOptions): string[] {
   const sessions = new Map<string, CandidateRecord[]>();
   for (const record of records) {
     const group = sessions.get(record.sourceKey) ?? [];
@@ -264,25 +264,58 @@ function toSessionCandidateLines(records: CandidateRecord[], limit: number): str
   }
 
   return [...sessions.values()]
-    .map(toSessionCandidateLine)
+    .map((records) => toSessionCandidateLine(records, options))
     .sort((a, b) => compareRecordRecency(b.bestRecord, a.bestRecord))
     .slice(0, limit)
-    .map((candidate) => `${candidate.sourceKey}\t${candidate.display}\t${candidate.searchText}`);
+    .map((candidate) => `${candidate.sourceKey}\t${candidate.display}`);
 }
 
-function toSessionCandidateLine(records: CandidateRecord[]): { sourceKey: string; display: string; searchText: string; bestRecord: CandidateRecord } {
+function toSessionCandidateLine(records: CandidateRecord[], options: SearchOptions): { sourceKey: string; display: string; searchText: string; bestRecord: CandidateRecord } {
   const sorted = sortByRecency(records);
   const bestRecord = sorted[0]!;
   const label = bestRecord.sessionName ?? projectFromCwd(bestRecord.cwd) ?? bestRecord.sessionId.slice(0, 8);
   const date = bestRecord.timestamp?.slice(0, 10);
   const matchLabel = records.length === 1 ? "1 match" : `${records.length} matches`;
-  const snippet = bestRecord.text;
+  const snippet = highlightForQuery(visibleExcerpt(bestRecord.text, options.query, options), options.query, options);
   return {
     sourceKey: bestRecord.sourceKey,
     display: [label, date, matchLabel, snippet].filter(Boolean).join(" — "),
     searchText: [bestRecord.cwd, bestRecord.sessionName, bestRecord.sessionId, ...records.slice(0, 20).map((record) => record.text)].filter(Boolean).join(" "),
     bestRecord,
   };
+}
+
+function visibleExcerpt(text: string, query: string | undefined, options: Pick<SearchOptions, "matchMode" | "tokenMode">): string {
+  const terms = highlightTerms(query, options);
+  if (terms.length === 0) return truncateText(text, 260);
+  const lower = text.toLowerCase();
+  const matchIndex = terms.map((term) => lower.indexOf(term.toLowerCase())).filter((index) => index >= 0).sort((a, b) => a - b)[0];
+  if (matchIndex === undefined) return truncateText(text, 260);
+  const start = Math.max(0, matchIndex - 100);
+  const end = Math.min(text.length, matchIndex + 220);
+  return `${start > 0 ? "…" : ""}${text.slice(start, end).trim()}${end < text.length ? "…" : ""}`;
+}
+
+function truncateText(text: string, maxLength: number): string {
+  return text.length <= maxLength ? text : `${text.slice(0, maxLength).trim()}…`;
+}
+
+export function highlightForQuery(text: string, query: string | undefined, options: Pick<SearchOptions, "matchMode" | "tokenMode"> = {}): string {
+  const terms = highlightTerms(query, options);
+  if (terms.length === 0) return text;
+  const pattern = new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "gi");
+  return text.replace(pattern, "\u001b[33;1m$1\u001b[0m");
+}
+
+function highlightTerms(query: string | undefined, options: Pick<SearchOptions, "matchMode" | "tokenMode">): string[] {
+  const trimmed = query?.trim();
+  if (!trimmed || options.matchMode === "regex") return [];
+  const terms = (options.tokenMode ?? "and") === "and" ? [trimmed, ...tokenize(trimmed)] : tokenize(trimmed);
+  return [...new Set(terms.filter((term) => term.length > 0).sort((a, b) => b.length - a.length))];
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function recordsWithMatchContext(records: CandidateRecord[], query: string, options: SearchOptions, contextLines: number): CandidateRecord[] {

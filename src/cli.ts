@@ -2,7 +2,7 @@ import { cleanCache, doctorCache, getCacheStats, rebuildCache, syncCache } from 
 import { detectFzfVersion, runFzf } from "./fzf.js";
 import { parseRecordKey } from "./records.js";
 import { runSelectedAction, type SelectedAction } from "./actions.js";
-import { candidateLines, findRecordByKey, previewRecord, rgCandidateLines, type SearchOptions } from "./search.js";
+import { candidateLines, findRecordByKey, highlightForQuery, previewRecord, rgCandidateLines, type SearchOptions } from "./search.js";
 
 const HELP = `pi-fzf
 
@@ -68,7 +68,7 @@ async function printPreview(key: string | undefined, opts: CliOptions = {}) {
   if (!p) { process.exitCode = 1; return; }
   console.log(p.metadata.join("\n"));
   console.log(`${opts.query ? "matches with context" : "messages"}:`);
-  console.log(p.records.map((record) => `[${record.role}] ${record.text}`).join("\n"));
+  console.log(p.records.map((record) => `[${record.role}] ${highlightForQuery(record.text, opts.query, opts)}`).join("\n"));
 }
 async function copyKey(key: string) { const r = await findRecordByKey(key); if (!r) { process.exitCode = 1; return; } await runSelectedAction(r, "copy"); }
 
