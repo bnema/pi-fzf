@@ -1,0 +1,2 @@
+{"id":"e1","sessionId":"sess-basic","cwd":"/work/basic","timestamp":"2026-06-07T01:00:00.000Z","role":"user","message":{"content":[{"type":"text","text":"Please help me debug the frobnicator"}]}}
+{"id":"e2","sessionId":"sess-basic","cwd":"/work/basic","timestamp":"2026-06-07T01:01:00.000Z","role":"assistant","message":{"content":[{"type":"text","text":"Start by checking the parser boundary."}]}}

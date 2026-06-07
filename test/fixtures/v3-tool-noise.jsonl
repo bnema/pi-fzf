@@ -1,0 +1,3 @@
+{"id":"t1","sessionId":"sess-tools","role":"assistant","message":{"content":[{"type":"thinking","text":"thinking should be skipped"},{"type":"toolCall","text":"toolCall should be skipped"},{"type":"text","text":"Human-visible answer survives"},{"type":"text","text":"AAAAABBBBBCCCCCDDDDDEEEEEFFFFFGGGGGHHHHHIIIIIJJJJJKKKKKLLLLLMMMMMNNNNNOOOOOPPPPPQQQQQRRRRRSSSSSTTTTTUUUUUVVVVVWWWWWXXXXXYYYYYZZZZZ"}]}}
+{"id":"t2","sessionId":"sess-tools","role":"toolResult","message":{"content":[{"type":"text","text":"toolResult should be skipped"}]}}
+{"id":"t3","sessionId":"sess-tools","type":"bashExecution","output":"bashExecution should be skipped"}

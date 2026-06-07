@@ -1,0 +1,3 @@
+{"id":"i1","sessionId":"sess-invalid","role":"user","message":{"content":[{"type":"text","text":"Valid user before invalid JSON"}]}}
+this is not json
+{"id":"i2","sessionId":"sess-invalid","role":"assistant","message":{"content":[{"type":"text","text":"Valid assistant after invalid JSON"}]}}
