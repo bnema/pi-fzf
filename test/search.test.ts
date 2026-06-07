@@ -53,7 +53,7 @@ describe("search", () => {
     expect((await findRecordByKey(recordKey(record), { cacheRoot }))?.text).toContain("gamma");
     const preview = await previewRecord(recordKey(record), 1, { cacheRoot });
     expect(preview?.metadata.join("\n")).toContain("session id: s1");
-    expect(preview?.neighbors[0]?.text).toContain("alpha");
+    expect(preview?.records.map((previewRecord) => previewRecord.text)).toEqual(["alpha beta", "gamma delta"]);
   });
 
   it("uses rg candidate prefilter for non-empty searches while preserving filters", async () => {

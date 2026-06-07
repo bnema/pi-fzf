@@ -67,8 +67,8 @@ async function printPreview(key: string | undefined, opts: CliOptions = {}) {
   const p = await previewRecord(key, 12, opts);
   if (!p) { process.exitCode = 1; return; }
   console.log(p.metadata.join("\n"));
-  console.log(`text:\n${p.record.text}`);
-  if (p.neighbors.length) console.log(`${opts.query ? "matches" : "neighbors"}:\n${p.neighbors.map((n) => `[${n.role}] ${n.text}`).join("\n")}`);
+  console.log(`${opts.query ? "matches with context" : "messages"}:`);
+  console.log(p.records.map((record) => `[${record.role}] ${record.text}`).join("\n"));
 }
 async function copyKey(key: string) { const r = await findRecordByKey(key); if (!r) { process.exitCode = 1; return; } await runSelectedAction(r, "copy"); }
 

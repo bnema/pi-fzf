@@ -25,7 +25,7 @@ export interface SearchOptions extends PathResolutionOptions {
   limit?: number;
 }
 
-export interface Preview { record: CandidateRecord; metadata: string[]; neighbors: CandidateRecord[] }
+export interface Preview { record: CandidateRecord; metadata: string[]; neighbors: CandidateRecord[]; records: CandidateRecord[] }
 
 const DEFAULT_LIMIT = 10_000;
 const RG_MATCH_OVERFETCH_FACTOR = 20;
@@ -74,19 +74,19 @@ export async function previewRecord(key: string, contextLines = 2, options: Sear
   const sourceRecords = same.length ? same : await readSourceRecords(found.sourceKey, options);
   const sorted = sourceRecords.sort((a, b) => a.sequence - b.sequence || a.chunkIndex - b.chunkIndex);
   const query = options.query?.trim();
-  const idx = sorted.findIndex((r) => recordKey(r) === recordKey(found));
-  const neighbors = query
-    ? sorted.filter((record) => recordKey(record) !== recordKey(found) && matchesQuery(record, query, options)).slice(0, contextLines)
-    : idx < 0 ? [] : sorted.slice(Math.max(0, idx - contextLines), idx).concat(sorted.slice(idx + 1, idx + 1 + contextLines));
+  const previewRecords = query ? recordsWithMatchContext(sorted, query, options, contextLines) : sorted;
+  const previewRecord = previewRecords[0] ?? found;
+  const neighbors = previewRecords.slice(1);
+  const matchCount = query ? sorted.filter((record) => matchesQuery(record, query, options)).length : undefined;
   const metadata = [
     `project: ${found.sessionName ?? projectFromCwd(found.cwd) ?? ""}`,
     `cwd: ${found.cwd ?? ""}`,
     `session id: ${found.sessionId}`,
     `session path: ${found.sessionPath}`,
-    `role: ${found.role}`,
-    `timestamp: ${found.timestamp ?? ""}`,
+    `messages: ${sorted.length}`,
+    ...(matchCount === undefined ? [] : [`matches: ${matchCount}`]),
   ];
-  return { record: found, metadata, neighbors };
+  return { record: previewRecord, metadata, neighbors, records: previewRecords };
 }
 
 export async function rgCandidateLines(options: SearchOptions = {}): Promise<string[]> {
@@ -283,6 +283,16 @@ function toSessionCandidateLine(records: CandidateRecord[]): { sourceKey: string
     searchText: [bestRecord.cwd, bestRecord.sessionName, bestRecord.sessionId, ...records.slice(0, 20).map((record) => record.text)].filter(Boolean).join(" "),
     bestRecord,
   };
+}
+
+function recordsWithMatchContext(records: CandidateRecord[], query: string, options: SearchOptions, contextLines: number): CandidateRecord[] {
+  const included = new Set<number>();
+  const context = Math.min(contextLines, 3);
+  records.forEach((record, index) => {
+    if (!matchesQuery(record, query, options)) return;
+    for (let i = Math.max(0, index - context); i <= Math.min(records.length - 1, index + context); i++) included.add(i);
+  });
+  return [...included].sort((a, b) => a - b).map((index) => records[index]!);
 }
 
 function sortByRecency(records: CandidateRecord[]): CandidateRecord[] {
