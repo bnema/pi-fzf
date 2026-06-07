@@ -18,7 +18,10 @@ Usage:
   pi-fzf copy --key <key>
 `;
 
+let pipeErrorHandlerInstalled = false;
+
 export async function main(args: string[] = process.argv.slice(2)): Promise<void> {
+  installPipeErrorHandler();
   if (args.includes("--help") || args.includes("-h") || args[0] === "help") { console.log(HELP.trimEnd()); return; }
   const cmd = command(args);
   const rest = cmd === "default" ? args : args.slice(1);
@@ -90,3 +93,11 @@ function parseOptions(args: string[]): CliOptions {
 }
 function actionFromOptions(o: CliOptions): SelectedAction { if (o.json) return "json"; if (o.printSessionId) return "print-session-id"; if (o.printSessionPath) return "print-session-path"; if (o.printSnippet) return "print-snippet"; return (process.env.PI_FZF_ACTION as SelectedAction | undefined) ?? "menu"; }
 function required(v: string | undefined, name: string): string { if (!v) throw new Error(`${name} is required`); return v; }
+function installPipeErrorHandler(): void {
+  if (pipeErrorHandlerInstalled) return;
+  pipeErrorHandlerInstalled = true;
+  process.stdout.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EPIPE") process.exit(0);
+    throw error;
+  });
+}
