@@ -55,7 +55,7 @@ describe("buildFzfArgs", () => {
     expect(args).toContain("--accept-nth=1");
     expect(args).toContain("--id-nth=1");
     expect(args).toContain("--track");
-    expect(args).toContain("--preview=pi-fzf preview --key {1}");
+    expect(args).toContain("--preview=pi-fzf preview --key {1} --query {q}");
   });
 
   it("omits accept-nth and id tracking flags when unsupported", () => {
@@ -79,7 +79,7 @@ describe("buildFzfArgs", () => {
   it("uses a configurable pi-fzf command for previews and reloads", () => {
     const args = buildFzfArgs({ version: version("0.73.1"), dynamicRg: true, fzfCommand: "/home/me/.local/bin/pi-fzf-search" });
 
-    expect(args).toContain("--preview=/home/me/.local/bin/pi-fzf-search preview --key {1}");
+    expect(args).toContain("--preview=/home/me/.local/bin/pi-fzf-search preview --key {1} --query {q}");
     expect(args).toContain("--bind=start:reload:/home/me/.local/bin/pi-fzf-search candidates --query {q} || true");
   });
 });

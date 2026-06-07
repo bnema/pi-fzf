@@ -32,7 +32,7 @@ export async function main(args: string[] = process.argv.slice(2)): Promise<void
   if (cmd === "doctor") { console.log(JSON.stringify(await doctorCache(), null, 2)); return; }
   if (cmd === "stats") { console.log(JSON.stringify(await getCacheStats(), null, 2)); return; }
   if (cmd === "candidates") { console.log((await rgCandidateLines(opts)).join("\n")); return; }
-  if (cmd === "preview") { await printPreview(required(opts.key, "--key")); return; }
+  if (cmd === "preview") { await printPreview(required(opts.key, "--key"), opts); return; }
   if (cmd === "copy") { await copyKey(required(opts.key, "--key")); return; }
 
   await syncCache();
@@ -62,12 +62,12 @@ async function printSearch(opts: CliOptions) {
   }
 }
 
-async function printPreview(key: string) {
-  const p = await previewRecord(key);
+async function printPreview(key: string, opts: CliOptions = {}) {
+  const p = await previewRecord(key, 12, opts);
   if (!p) { process.exitCode = 1; return; }
   console.log(p.metadata.join("\n"));
   console.log(`text:\n${p.record.text}`);
-  if (p.neighbors.length) console.log(`neighbors:\n${p.neighbors.map((n) => `[${n.role}] ${n.text}`).join("\n")}`);
+  if (p.neighbors.length) console.log(`${opts.query ? "matches" : "neighbors"}:\n${p.neighbors.map((n) => `[${n.role}] ${n.text}`).join("\n")}`);
 }
 async function copyKey(key: string) { const r = await findRecordByKey(key); if (!r) { process.exitCode = 1; return; } await runSelectedAction(r, "copy"); }
 

@@ -33,7 +33,14 @@ const RG_MATCH_MIN_PREFILTER = 200;
 const RG_MATCH_MAX_PREFILTER = 20_000;
 
 export async function searchRecords(options: SearchOptions = {}): Promise<CandidateRecord[]> {
-  const limit = options.limit ?? DEFAULT_LIMIT;
+  return sortByRecency(await collectMatchingRecords(options)).slice(0, options.limit ?? DEFAULT_LIMIT);
+}
+
+export async function candidateLines(options: SearchOptions = {}): Promise<string[]> {
+  return toSessionCandidateLines(await collectMatchingRecords(options), options.limit ?? DEFAULT_LIMIT);
+}
+
+async function collectMatchingRecords(options: SearchOptions = {}): Promise<CandidateRecord[]> {
   const query = options.query?.trim() ?? "";
   const out: CandidateRecord[] = [];
   for await (const record of readAllRecords(options)) {
@@ -41,11 +48,7 @@ export async function searchRecords(options: SearchOptions = {}): Promise<Candid
     if (query && !matchesQuery(record, query, options)) continue;
     out.push(record);
   }
-  return sortByRecency(out).slice(0, limit);
-}
-
-export async function candidateLines(options: SearchOptions = {}): Promise<string[]> {
-  return toSessionCandidateLines(await searchRecords(options), options.limit ?? DEFAULT_LIMIT);
+  return out;
 }
 
 export async function findRecordByKey(key: string, options: SearchOptions = {}): Promise<CandidateRecord | undefined> {
@@ -70,8 +73,11 @@ export async function previewRecord(key: string, contextLines = 2, options: Sear
   if (!found) return undefined;
   const sourceRecords = same.length ? same : await readSourceRecords(found.sourceKey, options);
   const sorted = sourceRecords.sort((a, b) => a.sequence - b.sequence || a.chunkIndex - b.chunkIndex);
+  const query = options.query?.trim();
   const idx = sorted.findIndex((r) => recordKey(r) === recordKey(found));
-  const neighbors = idx < 0 ? [] : sorted.slice(Math.max(0, idx - contextLines), idx).concat(sorted.slice(idx + 1, idx + 1 + contextLines));
+  const neighbors = query
+    ? sorted.filter((record) => recordKey(record) !== recordKey(found) && matchesQuery(record, query, options)).slice(0, contextLines)
+    : idx < 0 ? [] : sorted.slice(Math.max(0, idx - contextLines), idx).concat(sorted.slice(idx + 1, idx + 1 + contextLines));
   const metadata = [
     `project: ${found.sessionName ?? projectFromCwd(found.cwd) ?? ""}`,
     `cwd: ${found.cwd ?? ""}`,
