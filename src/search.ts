@@ -28,6 +28,9 @@ export interface SearchOptions extends PathResolutionOptions {
 export interface Preview { record: CandidateRecord; metadata: string[]; neighbors: CandidateRecord[] }
 
 const DEFAULT_LIMIT = 5000;
+const RG_MATCH_OVERFETCH_FACTOR = 20;
+const RG_MATCH_MIN_PREFILTER = 200;
+const RG_MATCH_MAX_PREFILTER = 20_000;
 
 export async function searchRecords(options: SearchOptions = {}): Promise<CandidateRecord[]> {
   const limit = options.limit ?? DEFAULT_LIMIT;
@@ -84,7 +87,7 @@ export async function rgCandidateLines(options: SearchOptions = {}): Promise<str
   if (!query) return candidateLines(options);
   const cacheRoot = options.cacheRoot ?? resolveCacheRoot(options);
   const args = rgArgsForQuery(query, options, join(cacheRoot, "records"));
-  const matchesByPath = await rgMatchingLines("rg", args);
+  const matchesByPath = await rgMatchingLines("rg", args, rgPrefilterLimit(options.limit ?? DEFAULT_LIMIT));
   if (!matchesByPath) return candidateLines(options);
   const out: CandidateRecord[] = [];
   const seen = new Set<string>();
@@ -110,48 +113,70 @@ function rgArgsForQuery(query: string, options: SearchOptions, recordsDir: strin
   return args;
 }
 
-async function rgMatchingLines(command: string, args: string[]): Promise<Map<string, Set<number>> | undefined> {
+async function rgMatchingLines(command: string, args: string[], maxMatches: number): Promise<Map<string, Set<number>> | undefined> {
   return new Promise((resolve) => {
     const matches = new Map<string, Set<number>>();
     const child = spawn(command, args, { shell: false, stdio: ["ignore", "pipe", "ignore"] });
     let buffer = "";
     let settled = false;
-    const fail = () => { if (!settled) { settled = true; resolve(undefined); } };
+    let stoppingAfterLimit = false;
+    let matchCount = 0;
+    const finish = (value: Map<string, Set<number>> | undefined) => { if (!settled) { settled = true; resolve(value); } };
+    const stopIfFull = () => {
+      if (matchCount < maxMatches || stoppingAfterLimit) return false;
+      stoppingAfterLimit = true;
+      child.kill();
+      return true;
+    };
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
+      if (stoppingAfterLimit) return;
       buffer += chunk;
       let newline = buffer.indexOf("\n");
       while (newline >= 0) {
         const line = buffer.slice(0, newline);
         buffer = buffer.slice(newline + 1);
-        if (line && !collectRgMatch(line, matches)) { child.kill(); fail(); return; }
+        if (line) {
+          const result = collectRgMatch(line, matches);
+          if (result === undefined) { child.kill(); finish(undefined); return; }
+          matchCount += result;
+          if (stopIfFull()) return;
+        }
         newline = buffer.indexOf("\n");
       }
     });
-    child.on("error", fail);
+    child.on("error", () => finish(undefined));
     child.on("close", (code) => {
       if (settled) return;
-      if (code !== 0 && code !== 1) { fail(); return; }
-      if (buffer && !collectRgMatch(buffer, matches)) { fail(); return; }
-      settled = true;
-      resolve(matches);
+      if (!stoppingAfterLimit && code !== 0 && code !== 1) { finish(undefined); return; }
+      if (!stoppingAfterLimit && buffer) {
+        const result = collectRgMatch(buffer, matches);
+        if (result === undefined) { finish(undefined); return; }
+      }
+      finish(matches);
     });
   });
 }
 
-function collectRgMatch(line: string, matches: Map<string, Set<number>>): boolean {
+function collectRgMatch(line: string, matches: Map<string, Set<number>>): number | undefined {
   try {
     const event = JSON.parse(line);
-    if (event.type !== "match") return true;
+    if (event.type !== "match") return 0;
     const path = event.data?.path?.text;
     const lineNumber = event.data?.line_number;
     if (typeof path === "string" && Number.isInteger(lineNumber)) {
       const lines = matches.get(path) ?? new Set<number>();
+      const before = lines.size;
       lines.add(lineNumber);
       matches.set(path, lines);
+      return lines.size > before ? 1 : 0;
     }
-    return true;
-  } catch { return false; }
+    return 0;
+  } catch { return undefined; }
+}
+
+function rgPrefilterLimit(limit: number): number {
+  return Math.min(RG_MATCH_MAX_PREFILTER, Math.max(RG_MATCH_MIN_PREFILTER, limit * RG_MATCH_OVERFETCH_FACTOR));
 }
 
 async function readRecordsAtLines(path: string, lineNumbers: Set<number>): Promise<CandidateRecord[]> {
