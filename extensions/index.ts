@@ -125,7 +125,11 @@ function resultLabel(record: CandidateRecord): string {
 }
 
 function sessionReference(record: CandidateRecord): string {
-  return `pi session ${record.sessionId}\npath: ${record.sessionPath}\nrole: ${record.role}\ndate: ${record.timestamp ?? "unknown"}`;
+  return `pi session ${record.sessionId}\nproject: ${record.sessionName ?? projectFromCwd(record.cwd) ?? "unknown"}\nrole: ${record.role}\ndate: ${record.timestamp ?? "unknown"}`;
+}
+
+function projectFromCwd(cwd: string | undefined): string | undefined {
+  return cwd?.split(/[\\/]/).filter(Boolean).pop();
 }
 
 function showRecord(ctx: ExtensionCommandContext, record: CandidateRecord): void {

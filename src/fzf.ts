@@ -13,6 +13,7 @@ export interface FzfRunOptions {
   query?: string;
   dynamicRg?: boolean;
   fzfCommand?: string;
+  searchArgs?: readonly string[];
 }
 
 export function parseFzfVersion(raw: string): FzfVersion | undefined {
@@ -80,6 +81,8 @@ export function supportsIdNth(version: FzfVersion | undefined): boolean {
 
 export function buildFzfArgs(options: FzfRunOptions): string[] {
   const piFzfCommand = shellQuote(options.fzfCommand ?? process.env.PI_FZF_COMMAND ?? "pi-fzf");
+  const searchArgs = options.searchArgs?.map(shellQuote).join(" ") ?? "";
+  const passthrough = searchArgs ? `${searchArgs} ` : "";
   const args = [
     "--ansi",
     "--delimiter=\t",
@@ -87,7 +90,7 @@ export function buildFzfArgs(options: FzfRunOptions): string[] {
     "--exact",
     "--ignore-case",
     "--no-sort",
-    `--preview=${piFzfCommand} preview --key {1} --query {q}`,
+    `--preview=${piFzfCommand} preview ${passthrough}--key {1} --query={q}`,
     "--preview-window=right:70%,wrap",
   ];
 
@@ -104,7 +107,7 @@ export function buildFzfArgs(options: FzfRunOptions): string[] {
   }
 
   if (options.dynamicRg === true) {
-    const reloadCandidates = `${piFzfCommand} candidates --query {q} || true`;
+    const reloadCandidates = `${piFzfCommand} candidates ${passthrough}--query={q} || true`;
     args.push(
       "--disabled",
       "--prompt=pi> ",

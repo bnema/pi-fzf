@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
 import { access, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join, parse, resolve } from "node:path";
+import { dirname, join, parse, relative, resolve } from "node:path";
 import { homedir, tmpdir } from "node:os";
 
 import { acquireLock } from "./locks.js";
@@ -52,7 +52,7 @@ export async function syncCache(options: CacheOptions = {}): Promise<SyncResult>
     for (const sourcePath of files) {
       const st = await stat(sourcePath);
       const previous = manifest.sources[sourcePath];
-      if (previous && previous.mtime === st.mtimeMs && previous.size === st.size) continue;
+      if (previous && previous.mtime === st.mtimeMs && previous.size === st.size && await sourceCacheComplete(previous)) continue;
       const parsedSession = await parseSessionFile(sourcePath);
       const records = recordsFromParsedSession(parsedSession);
       const sourceKey = sourceKeyForPath(sourcePath);
@@ -182,6 +182,7 @@ async function writeManifest(ctx: ReturnType<typeof context>, manifest: CacheMan
 async function ensureLayout(cacheRoot: string) { await mkdir(join(cacheRoot, "records"), { recursive: true, mode: 0o700 }); await mkdir(join(cacheRoot, "sessions"), { recursive: true, mode: 0o700 }); await writeFile(join(cacheRoot, CACHE_SENTINEL), "pi-fzf cache\n", { mode: 0o600 }); }
 async function atomicWrite(path: string, content: string) { await mkdir(dirname(path), { recursive: true, mode: 0o700 }); const tmp = `${path}.tmp-${process.pid}-${Date.now()}`; await writeFile(tmp, content, { mode: 0o600 }); await rename(tmp, path); }
 async function removeSourceShards(source: CacheSourceEntry) { await rm(source.paths.records, { force: true }); await rm(source.paths.session, { force: true }); }
+async function sourceCacheComplete(source: CacheSourceEntry): Promise<boolean> { return await exists(source.paths.records) && await exists(source.paths.session); }
 async function exists(path: string) { try { await access(path, constants.F_OK); return true; } catch { return false; } }
 
 async function validateCacheRootForDestructiveOperation(ctx: ReturnType<typeof context>) {
@@ -189,7 +190,7 @@ async function validateCacheRootForDestructiveOperation(ctx: ReturnType<typeof c
   const sessionRoot = resolve(ctx.sessionRoot);
   const forbidden = new Set([parse(cacheRoot).root, resolve(homedir()), resolve(process.cwd()), resolve(tmpdir()), sessionRoot]);
   if (forbidden.has(cacheRoot)) throw new Error(`refusing to rebuild unsafe cache root: ${ctx.cacheRoot}`);
-  if (sessionRoot.startsWith(cacheRoot + "/") || cacheRoot.startsWith(sessionRoot + "/")) throw new Error(`refusing to rebuild cache root overlapping session root: ${ctx.cacheRoot}`);
+  if (pathsOverlap(cacheRoot, sessionRoot)) throw new Error(`refusing to rebuild cache root overlapping session root: ${ctx.cacheRoot}`);
 
   const parent = dirname(cacheRoot);
   if (await exists(cacheRoot)) {
@@ -199,6 +200,16 @@ async function validateCacheRootForDestructiveOperation(ctx: ReturnType<typeof c
       throw new Error(`refusing to rebuild cache root without pi-fzf sentinel or manifest: ${ctx.cacheRoot}`);
     }
   }
+}
+
+function pathsOverlap(a: string, b: string): boolean {
+  const aToB = relative(a, b);
+  const bToA = relative(b, a);
+  return isSameOrChildRelativePath(aToB) || isSameOrChildRelativePath(bToA);
+}
+
+function isSameOrChildRelativePath(value: string): boolean {
+  return value === "" || (!value.startsWith("..") && !parse(value).root);
 }
 
 async function removeCacheOwnedContents(cacheRoot: string) {

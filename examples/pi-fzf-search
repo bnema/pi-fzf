@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PI_FZF_HOME="${PI_FZF_HOME:-$HOME/dev/projects/pi-fzf}"
+if [[ -z "${PI_FZF_COMMAND:-}" ]]; then
+  PI_FZF_COMMAND="$(command -v "$(basename "$0")" 2>/dev/null || true)"
+  export PI_FZF_COMMAND="${PI_FZF_COMMAND:-$0}"
+fi
 
+PI_FZF_BIN="${PI_FZF_BIN:-$(command -v pi-fzf 2>/dev/null || true)}"
+if [[ -n "$PI_FZF_BIN" ]]; then
+  exec "$PI_FZF_BIN" "$@"
+fi
+
+PI_FZF_HOME="${PI_FZF_HOME:-$HOME/dev/projects/pi-fzf}"
 if [[ ! -f "$PI_FZF_HOME/bin/pi-fzf.js" ]]; then
-  echo "pi-fzf checkout not found: $PI_FZF_HOME" >&2
-  echo "Set PI_FZF_HOME=/path/to/pi-fzf or clone/build pi-fzf there." >&2
+  echo "pi-fzf executable not found." >&2
+  echo "Install pi-fzf globally, set PI_FZF_BIN, or set PI_FZF_HOME=/path/to/pi-fzf." >&2
   exit 1
 fi
 
 if [[ ! -f "$PI_FZF_HOME/dist/src/cli.js" ]]; then
-  echo "pi-fzf is not built yet. Run:" >&2
+  echo "pi-fzf checkout is not built yet. Run:" >&2
   echo "  cd $PI_FZF_HOME && npm install && npm run build" >&2
   exit 1
-fi
-
-if [[ -z "${PI_FZF_COMMAND:-}" ]]; then
-  PI_FZF_COMMAND="$(command -v "$(basename "$0")" 2>/dev/null || true)"
-  export PI_FZF_COMMAND="${PI_FZF_COMMAND:-$0}"
 fi
 
 exec node "$PI_FZF_HOME/bin/pi-fzf.js" "$@"

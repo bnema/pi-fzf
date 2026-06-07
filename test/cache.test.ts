@@ -104,6 +104,17 @@ describe("session cache", () => {
     expect(records).not.toContain("first");
   });
 
+  it("repairs missing shards for unchanged sources", async () => {
+    const { cacheRoot, sessionRoot } = await tempRoot();
+    const source = await sessionFile(sessionRoot, "one.jsonl", "repair needle");
+    await syncCache({ cacheRoot, sessionRoot });
+    await rm(join(cacheRoot, "records", `${sourceKeyForPath(source)}.jsonl`));
+
+    expect(await syncCache({ cacheRoot, sessionRoot })).toMatchObject({ indexed: 1, parsed: 1 });
+    const records = await readFile(join(cacheRoot, "records", `${sourceKeyForPath(source)}.jsonl`), "utf8");
+    expect(records).toContain("repair needle");
+  });
+
   it("removes shards for deleted sources", async () => {
     const { cacheRoot, sessionRoot } = await tempRoot();
     const source = await sessionFile(sessionRoot);

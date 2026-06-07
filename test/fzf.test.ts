@@ -57,7 +57,7 @@ describe("buildFzfArgs", () => {
     expect(args).toContain("--accept-nth=1");
     expect(args).toContain("--id-nth=1");
     expect(args).toContain("--track");
-    expect(args).toContain("--preview=pi-fzf preview --key {1} --query {q}");
+    expect(args).toContain("--preview=pi-fzf preview --key {1} --query={q}");
     expect(args).toContain("--preview-window=right:70%,wrap");
   });
 
@@ -74,15 +74,22 @@ describe("buildFzfArgs", () => {
 
     expect(args).toContain("--disabled");
     expect(args).toContain("--prompt=pi> ");
-    expect(args).not.toContain("--bind=start:reload:pi-fzf candidates --query {q} || true");
-    expect(args).toContain("--bind=change:reload:pi-fzf candidates --query {q} || true");
+    expect(args).not.toContain("--bind=start:reload:pi-fzf candidates --query={q} || true");
+    expect(args).toContain("--bind=change:reload:pi-fzf candidates --query={q} || true");
     expect(args).toContain("--bind=ctrl-f:unbind(change)+change-prompt(fzf> )+enable-search");
   });
 
   it("uses a configurable pi-fzf command for previews and reloads", () => {
     const args = buildFzfArgs({ version: version("0.73.1"), dynamicRg: true, fzfCommand: "/home/me/.local/bin/pi-fzf-search" });
 
-    expect(args).toContain("--preview=/home/me/.local/bin/pi-fzf-search preview --key {1} --query {q}");
-    expect(args).toContain("--bind=change:reload:/home/me/.local/bin/pi-fzf-search candidates --query {q} || true");
+    expect(args).toContain("--preview=/home/me/.local/bin/pi-fzf-search preview --key {1} --query={q}");
+    expect(args).toContain("--bind=change:reload:/home/me/.local/bin/pi-fzf-search candidates --query={q} || true");
+  });
+
+  it("passes search filters through preview and reload commands", () => {
+    const args = buildFzfArgs({ version: version("0.73.1"), dynamicRg: true, searchArgs: ["--project", "api", "--limit", "50", "--or"] });
+
+    expect(args).toContain("--preview=pi-fzf preview --project api --limit 50 --or --key {1} --query={q}");
+    expect(args).toContain("--bind=change:reload:pi-fzf candidates --project api --limit 50 --or --query={q} || true");
   });
 });

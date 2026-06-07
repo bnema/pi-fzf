@@ -38,7 +38,7 @@ export async function main(args: string[] = process.argv.slice(2)): Promise<void
   await syncCache();
   if (opts.noFzf) { await printSearch(opts); return; }
   const lines = await candidateLines(opts);
-  const fzfOptions: Parameters<typeof runFzf>[0] = { candidates: lines, dynamicRg: true };
+  const fzfOptions: Parameters<typeof runFzf>[0] = { candidates: lines, dynamicRg: true, searchArgs: serializeSearchArgs(opts) };
   if (opts.query !== undefined) fzfOptions.query = opts.query;
   const version = await detectFzfVersion();
   if (version !== undefined) fzfOptions.version = version;
@@ -85,7 +85,8 @@ function parseOptions(args: string[]): CliOptions {
     if (a === "--json") o.json = true; else if (a === "--print-session-id") o.printSessionId = true;
     else if (a === "--print-session-path") o.printSessionPath = true; else if (a === "--print-snippet") o.printSnippet = true;
     else if (a === "--no-fzf") o.noFzf = true; else if (a === "--rebuild") o.rebuild = true; else if (a === "--exec") o.exec = true;
-    else if (a === "--query") { const next = readOptionValue(args, i); if (next !== undefined) { o.query = next.value; i = next.index; } else o.query = ""; }
+    else if (a.startsWith("--query=")) o.query = a.slice("--query=".length);
+    else if (a === "--query") { const next = readOptionValue(args, i, { allowLeadingDash: true }); if (next !== undefined) { o.query = next.value; i = next.index; } else o.query = ""; }
     else if (a === "--key") { const next = readOptionValue(args, i); if (next !== undefined) { o.key = next.value; i = next.index; } }
     else if (a === "--role") { const next = readOptionValue(args, i); if (next !== undefined) { o.role = next.value as any; i = next.index; } } else if (a === "--project") { const next = readOptionValue(args, i); if (next !== undefined) { o.project = next.value; i = next.index; } }
     else if (a === "--cwd") { const next = readOptionValue(args, i); if (next !== undefined) { o.cwd = next.value; i = next.index; } } else if (a === "--since") { const next = readOptionValue(args, i); if (next !== undefined) { o.since = next.value; i = next.index; } } else if (a === "--before") { const next = readOptionValue(args, i); if (next !== undefined) { o.before = next.value; i = next.index; } }
@@ -96,10 +97,25 @@ function parseOptions(args: string[]): CliOptions {
   if (o.query === undefined && terms.length) o.query = terms.join(" ");
   return o;
 }
-function readOptionValue(args: string[], index: number): { value: string; index: number } | undefined {
+function readOptionValue(args: string[], index: number, options: { allowLeadingDash?: boolean } = {}): { value: string; index: number } | undefined {
   const value = args[index + 1];
-  if (value === undefined || value.startsWith("--")) return undefined;
+  if (value === undefined || (!options.allowLeadingDash && value.startsWith("--"))) return undefined;
   return { value, index: index + 1 };
+}
+
+function serializeSearchArgs(options: CliOptions): string[] {
+  const args: string[] = [];
+  if (options.role) args.push("--role", options.role);
+  if (options.project) args.push("--project", options.project);
+  if (options.cwd) args.push("--cwd", options.cwd);
+  if (options.since) args.push("--since", options.since);
+  if (options.before) args.push("--before", options.before);
+  if (options.namedOnly) args.push("--named-only");
+  if (options.limit !== undefined) args.push("--limit", String(options.limit));
+  if (options.tokenMode === "or") args.push("--or");
+  if (options.matchMode === "regex") args.push("--regex");
+  if (options.matchMode === "fixed") args.push("--fixed");
+  return args;
 }
 
 function coloredRole(role: string): string {

@@ -12,26 +12,19 @@
 
 There are two separate ways to use `pi-fzf`:
 
-1. **Shell search** with `pi-fzf`/`pi-fzf-search`. This does not require loading the Pi plugin.
+1. **Shell search** with `pi-fzf`. This does not require loading the Pi plugin.
 2. **Pi slash command** with `/fzf`. This requires installing or loading the Pi plugin.
 
-### 1. Build the local checkout
+### 1. Install shell search
+
+From the public GitHub repository:
 
 ```sh
-cd /path/to/pi-fzf
-npm install
-npm run build
+npm install -g github:bnema/pi-fzf
+pi-fzf "thing I remember"
 ```
 
-### 2. Try shell search
-
-From the checkout:
-
-```sh
-node bin/pi-fzf.js "thing I remember"
-```
-
-Or install the included wrapper somewhere on your `PATH`:
+Optional wrapper alias:
 
 ```sh
 mkdir -p ~/.local/bin
@@ -40,18 +33,14 @@ chmod +x ~/.local/bin/pi-fzf-search
 pi-fzf-search "thing I remember"
 ```
 
-The wrapper expects the checkout at `$HOME/dev/projects/pi-fzf`. If yours is elsewhere, set:
+The wrapper uses `pi-fzf` from `PATH` by default. For a local checkout, set `PI_FZF_HOME=/path/to/pi-fzf`.
 
-```sh
-PI_FZF_HOME=/path/to/pi-fzf pi-fzf-search "thing I remember"
-```
-
-### 3. Enable `/fzf` inside Pi
+### 2. Enable `/fzf` inside Pi
 
 Only needed for the Pi slash command:
 
 ```sh
-pi install /path/to/pi-fzf
+pi install git:https://github.com/bnema/pi-fzf
 ```
 
 Then restart Pi and use:
@@ -60,9 +49,13 @@ Then restart Pi and use:
 /fzf thing I remember
 ```
 
-For extension development, load the checkout without installing:
+### Local development
 
 ```sh
+cd /path/to/pi-fzf
+npm install
+npm run build
+node bin/pi-fzf.js "thing I remember"
 pi -e /path/to/pi-fzf
 ```
 
@@ -91,7 +84,7 @@ pi-fzf search "foo|bar" --regex --or --json --no-fzf
 
 Search options:
 
-- `--role <user|assistant|system|tool>` filters by message role.
+- `--role <user|assistant|compaction|branch_summary|session>` filters by record role.
 - `--project <name>` filters named sessions/projects by substring.
 - `--cwd <path>` filters by exact working directory.
 - `--since <timestamp>` and `--before <timestamp>` filter by timestamp string.

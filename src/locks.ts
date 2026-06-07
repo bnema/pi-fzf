@@ -25,7 +25,7 @@ export async function acquireLock(lockPath: string, options: LockOptions = {}): 
       const handle = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
       await handle.writeFile(JSON.stringify(lockPayload(now())));
       await handle.close();
-      const heartbeat = setInterval(() => { void writeFile(lockPath, JSON.stringify(lockPayload(Date.now()))).catch(() => {}); }, Math.max(1000, Math.floor(staleMs / 3)));
+      const heartbeat = setInterval(() => { void writeFile(lockPath, JSON.stringify(lockPayload(now()))).catch(() => {}); }, Math.max(1000, Math.floor(staleMs / 3)));
       heartbeat.unref?.();
       return { path: lockPath, release: async () => { clearInterval(heartbeat); await rm(lockPath, { force: true }); } };
     } catch (error: any) {

@@ -112,7 +112,7 @@ export async function rgCandidateLines(options: SearchOptions = {}): Promise<str
 function rgArgsForQuery(query: string, options: SearchOptions, recordsDir: string): string[] {
   const args = ["--json", "--ignore-case", "--glob=*.jsonl"];
   if (options.matchMode !== "regex") args.push("--fixed-strings");
-  const patterns = options.matchMode === "regex" || (options.tokenMode ?? "and") === "and" ? [query] : tokenize(query);
+  const patterns = options.matchMode === "regex" ? [query] : tokenize(query);
   for (const pattern of patterns) args.push("-e", pattern);
   args.push(recordsDir);
   return args;

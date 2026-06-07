@@ -30,7 +30,7 @@ async function roots() {
   const dir = await mkdtemp(join(tmpdir(), "pi-fzf-cli-test-")); temps.push(dir);
   const sessionRoot = join(dir, "sessions"), cacheRoot = join(dir, "cache");
   await mkdir(sessionRoot, { recursive: true });
-  await writeFile(join(sessionRoot, "one.jsonl"), JSON.stringify({ sessionId: "cli-session", role: "user", content: "find me", cwd: "/work", name: "cli-proj" }) + "\n");
+  await writeFile(join(sessionRoot, "one.jsonl"), JSON.stringify({ sessionId: "cli-session", role: "user", content: "find me --help", cwd: "/work", name: "cli-proj" }) + "\n");
   return { cacheRoot, sessionRoot };
 }
 
@@ -53,6 +53,17 @@ describe("cli", () => {
     process.env.PI_FZF_SESSION_ROOT = sessionRoot;
     await capture(() => main(["index"]));
     const out = await capture(() => main(["search", "find", "--no-fzf", "--print-session-id"]));
+    expect(out).toContain("cli-session");
+  });
+
+  it("supports query values that start with dashes", async () => {
+    const { cacheRoot, sessionRoot } = await roots();
+    process.env.PI_FZF_CACHE_DIR = cacheRoot;
+    process.env.PI_FZF_SESSION_ROOT = sessionRoot;
+    await capture(() => main(["index"]));
+
+    const out = await capture(() => main(["search", "--query=--help", "--no-fzf", "--print-session-id"]));
+
     expect(out).toContain("cli-session");
   });
 

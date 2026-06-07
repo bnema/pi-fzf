@@ -18,7 +18,10 @@ async function fixture() {
     { sessionId: "s1", role: "user", content: "alpha beta", cwd: "/work/a", name: "proj-a", timestamp: "2024-01-01T00:00:00Z" },
     { sessionId: "s1", role: "assistant", content: "gamma delta", cwd: "/work/a", name: "proj-a", timestamp: "2024-01-02T00:00:00Z" },
   ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
-  await writeFile(join(sessionRoot, "b.jsonl"), JSON.stringify({ sessionId: "s2", role: "user", content: "omega", cwd: "/work/b", timestamp: "2024-01-03T00:00:00Z" }) + "\n");
+  await writeFile(join(sessionRoot, "b.jsonl"), [
+    { sessionId: "s2", role: "user", content: "omega", cwd: "/work/b", timestamp: "2024-01-03T00:00:00Z" },
+    { sessionId: "s2", role: "assistant", content: "alpha separated beta", cwd: "/work/b", timestamp: "2024-01-04T00:00:00Z" },
+  ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
   await syncCache({ cacheRoot, sessionRoot });
   return { cacheRoot, sessionRoot };
 }
@@ -27,14 +30,14 @@ describe("search", () => {
   it("returns empty-query records and candidate lines", async () => {
     const { cacheRoot } = await fixture();
     const records = await searchRecords({ cacheRoot });
-    expect(records).toHaveLength(3);
-    expect(await candidateLines({ cacheRoot, query: "alpha" })).toHaveLength(1);
+    expect(records).toHaveLength(4);
+    expect(await candidateLines({ cacheRoot, query: "alpha" })).toHaveLength(2);
   });
 
   it("supports AND, OR, regex and filters", async () => {
     const { cacheRoot } = await fixture();
-    expect(await searchRecords({ cacheRoot, query: "alpha beta" })).toHaveLength(1);
-    expect(await searchRecords({ cacheRoot, query: "alpha omega", tokenMode: "or" })).toHaveLength(2);
+    expect(await searchRecords({ cacheRoot, query: "alpha beta" })).toHaveLength(2);
+    expect(await searchRecords({ cacheRoot, query: "alpha omega", tokenMode: "or" })).toHaveLength(3);
     expect(await searchRecords({ cacheRoot, query: "g.mm.", matchMode: "regex" })).toHaveLength(1);
     expect(await searchRecords({ cacheRoot, role: "assistant", project: "proj-a", since: "2024-01-02" })).toHaveLength(1);
     expect(await searchRecords({ cacheRoot, namedOnly: true })).toHaveLength(2);
@@ -44,7 +47,7 @@ describe("search", () => {
     const { cacheRoot } = await fixture();
     const records = await searchRecords({ cacheRoot, tokenMode: "or", query: "alpha gamma omega", limit: 2 });
 
-    expect(records.map((record) => record.text)).toEqual(["omega", "gamma delta"]);
+    expect(records.map((record) => record.text)).toEqual(["alpha separated beta", "omega"]);
   });
 
   it("finds records by key and builds preview neighbors", async () => {
@@ -61,14 +64,18 @@ describe("search", () => {
     const lines = await rgCandidateLines({ cacheRoot, query: "alpha beta", role: "user" });
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("alpha beta");
-    expect(await rgCandidateLines({ cacheRoot, query: "alpha beta", role: "assistant" })).toHaveLength(0);
+    const assistant = await rgCandidateLines({ cacheRoot, query: "alpha beta", role: "assistant" });
+    expect(assistant).toHaveLength(1);
+    expect(assistant[0]).toContain("alpha");
+    expect(assistant[0]).toContain("separated");
+    expect(assistant[0]).toContain("beta");
   });
 
   it("matches plain queries case-insensitively before fzf", async () => {
     const { cacheRoot } = await fixture();
 
-    expect(await searchRecords({ cacheRoot, query: "ALPHA" })).toHaveLength(1);
-    expect(await rgCandidateLines({ cacheRoot, query: "ALPHA" })).toHaveLength(1);
+    expect(await searchRecords({ cacheRoot, query: "ALPHA" })).toHaveLength(2);
+    expect(await rgCandidateLines({ cacheRoot, query: "ALPHA" })).toHaveLength(2);
   });
 
   it("highlights query terms in visible candidate rows", async () => {
@@ -120,6 +127,6 @@ describe("search", () => {
     const selected = (await searchRecords({ cacheRoot, query: "omega" }))[0]!;
     const preview = await previewRecord(recordKey(selected), 1, { cacheRoot, query: "alpha" });
     expect(preview?.record.text).toBe("omega");
-    expect(preview?.neighbors).toHaveLength(0);
+    expect(preview?.neighbors).toHaveLength(1);
   });
 });
