@@ -31,17 +31,38 @@ make install
 - `rg`
 - `fzf` for shell selection
 
-## Use
+## CLI usage
+
+```bash
+pi-fzf [query]
+pi-fzf search [query]
+pi-fzf index [--rebuild]
+pi-fzf clean
+pi-fzf stats
+pi-fzf doctor
+pi-fzf candidates --query <query>
+pi-fzf preview --key <source:sequence:chunk>
+```
+
+Examples:
+
+```bash
+pi-fzf "thing I remember"
+pi-fzf search "repo bug" --limit 50
+pi-fzf index --rebuild
+```
+
+## Pi slash command
 
 ```text
 /fzf thing I remember
 ```
 
-```bash
-pi-fzf "thing I remember"
-pi-fzf index --rebuild
-pi-fzf doctor
-```
+Selected results are inserted back into the current Pi session as context. If interactive selection is not available, the command returns a compact list of matches.
+
+## Cache and privacy
+
+The cache stores searchable snippets from local Pi session files. Use `pi-fzf clean` to remove stale entries and `pi-fzf doctor` to inspect setup issues.
 
 ## Develop
 
