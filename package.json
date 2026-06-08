@@ -2,12 +2,11 @@
   "name": "pi-fzf",
   "version": "0.2.0",
   "type": "module",
-  "description": "Fast fzf-powered search for previous Pi coding-agent sessions.",
+  "description": "Search previous Pi sessions with fzf.",
   "keywords": [
-    "pi-package",
-    "fzf",
     "pi",
-    "sessions",
+    "pi-extension",
+    "fzf",
     "session-search"
   ],
   "homepage": "https://github.com/bnema/pi-fzf#readme",
